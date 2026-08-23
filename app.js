@@ -22,6 +22,15 @@
     nt:  { west: 129.00, south: -26.00, east: 138.00, north: -10.97 }
   };
   const OPEN_DISCLAIMER = "This only means no live title in our state registers at this location. Not a grant. Not parks, native title, planning, pastoral or city lots. ACT has no titles register.";
+  const API_BASE = "https://xplorr.143.198.52.4.sslip.io";
+  const AU_BBOX = { west: 112.0, south: -44.0, east: 154.0, north: -10.0 };
+  const LIVE_TITLES_MIN_ZOOM = 6;
+  const LIVE_TITLES_SRC = "src-live-api";
+  const LIVE_TITLES_FILL = "live-api-fill";
+  const LIVE_TITLES_LINE = "live-api-line";
+  const COMPANY_SRC = "src-company-api";
+  const COMPANY_FILL = "company-api-fill";
+  const COMPANY_LINE = "company-api-line";
 
   const KINDS = [
     { id: "granite", label: "granite", color: "#f4b6c2" },
@@ -138,6 +147,7 @@
   const findResults = document.getElementById("find-results");
   const statusLine = document.getElementById("status-line");
   const legendLive = document.getElementById("legend-live");
+  const apiChip = document.getElementById("api-chip");
 
   let manifest = null;
   const layerMeta = {};
@@ -163,6 +173,14 @@
   const findHexKinds = { holes: false, gchem: false };
   const findIndex = [];
   const FIND_LIST_CAP = { title: 30, occ: 20, holes: 12, gchem: 12 };
+  let apiStatus = { live: false, checked: false, health: null, error: "" };
+  let liveTitlesUsingApi = false;
+  let liveTitlesTimer = null;
+  let liveTitlesSeq = 0;
+  let findApiSeq = 0;
+  let identifySeq = 0;
+  let companyApiCache = {};
+  let lastLiveTitlesTruncated = false;
   const DEMO_NA = "DEMO — n/a";
   const DEMO_HOLDERS = [
     "DEMO Acme Gold Pty Ltd",
@@ -181,6 +199,227 @@
       statusLine.textContent = first;
     }
   }
+
+  function updateApiChip() {
+    if (!apiChip) return;
+    if (!apiStatus.checked) {
+      apiChip.textContent = "Checking register…";
+      apiChip.className = "api-chip";
+      return;
+    }
+    if (apiStatus.live && apiStatus.health) {
+      const n = Number(apiStatus.health.titles || 0);
+      apiChip.textContent = "Live · " + n.toLocaleString() + " titles";
+      apiChip.className = "api-chip live";
+      apiChip.title = "Read-only national register (" +
+        Number(apiStatus.health.holes || 0).toLocaleString() + " holes · " +
+        Number(apiStatus.health.occs || 0).toLocaleString() + " occurrences)";
+    } else {
+      apiChip.textContent = "Offline · static packs";
+      apiChip.className = "api-chip offline";
+      apiChip.title = apiStatus.error
+        ? "Register unreachable: " + apiStatus.error + ". Using frozen GeoJSON title packs."
+        : "Register unreachable. Using frozen GeoJSON title packs.";
+    }
+  }
+
+  function apiUrl(path, params) {
+    const u = new URL(path, API_BASE);
+    Object.keys(params || {}).forEach(function (k) {
+      const v = params[k];
+      if (v != null && v !== "") u.searchParams.set(k, v);
+    });
+    return u.toString();
+  }
+
+  function fetchApi(path, params, timeoutMs) {
+    const ctrl = new AbortController();
+    const ms = timeoutMs || 15000;
+    const timer = setTimeout(function () { ctrl.abort(); }, ms);
+    return fetch(apiUrl(path, params), { signal: ctrl.signal })
+      .then(function (r) {
+        if (!r.ok) throw new Error(path + " HTTP " + r.status);
+        return r.json();
+      })
+      .finally(function () { clearTimeout(timer); });
+  }
+
+  function checkApiHealth() {
+    return fetchApi("/health", null, 8000).then(function (h) {
+      if (!h || !h.ok) throw new Error("health not ok");
+      apiStatus = { live: true, checked: true, health: h, error: "" };
+      updateApiChip();
+      return true;
+    }).catch(function (err) {
+      apiStatus = {
+        live: false,
+        checked: true,
+        health: null,
+        error: (err && err.name === "AbortError") ? "timeout" : ((err && err.message) || "offline")
+      };
+      updateApiChip();
+      return false;
+    });
+  }
+
+  function emptyFC() {
+    return { type: "FeatureCollection", features: [] };
+  }
+
+  function bboxParam(b) {
+    return [b.west, b.south, b.east, b.north].map(function (n) {
+      return Number(n).toFixed(5);
+    }).join(",");
+  }
+
+  function mapBbox() {
+    const b = map.getBounds();
+    return {
+      west: b.getWest(),
+      south: b.getSouth(),
+      east: b.getEast(),
+      north: b.getNorth()
+    };
+  }
+
+  function liveTitlesLimit(zoom) {
+    if (zoom < LIVE_TITLES_MIN_ZOOM) return 0;
+    if (zoom < 7) return 200;
+    if (zoom < 8.5) return 500;
+    return 2000;
+  }
+
+  function jurisdictionToState(j) {
+    return String(j || "").trim().toLowerCase();
+  }
+
+  function commercialUseBlocked(props) {
+    const v = props && props.commercial_use;
+    return v === false || v === "false" || v === 0 || v === "0";
+  }
+
+  function commercialUseRow(props) {
+    if (!props) return null;
+    if (commercialUseBlocked(props)) {
+      const lic = String(props.licence || "CC BY-NC").trim();
+      return ["Licence", lic + " — not for commercial use"];
+    }
+    if (!isBlank(props.licence)) return ["Licence", props.licence];
+    return null;
+  }
+
+  function normalizeTitleProps(p) {
+    p = p || {};
+    return Object.assign({}, p, {
+      state: jurisdictionToState(p.state || p.jurisdiction),
+      tenure: p.tenure || p.tenure_type || "",
+      grant: p.grant || p.grant_date || "",
+      expiry: p.expiry || p.expiry_date || "",
+      status: p.status || "",
+      holder: p.holder || "",
+      name: p.name || "",
+      licence: p.licence || "",
+      commercial_use: p.commercial_use
+    });
+  }
+
+  function commFromProps(p) {
+    if (!isBlank(p.comm)) return String(p.comm);
+    const c = p.commodities;
+    if (Array.isArray(c)) return c.filter(Boolean).join(", ");
+    if (typeof c === "string") {
+      const s = c.trim();
+      if (!s) return "";
+      if (s.charAt(0) === "[") {
+        try {
+          const arr = JSON.parse(s);
+          if (Array.isArray(arr)) return arr.filter(Boolean).join(", ");
+        } catch (e) {}
+      }
+      return s;
+    }
+    return "";
+  }
+
+  function normalizeOccProps(p) {
+    p = p || {};
+    return Object.assign({}, p, {
+      state: jurisdictionToState(p.state || p.jurisdiction),
+      name: p.name || "",
+      comm: commFromProps(p),
+      kind: p.kind || "",
+      status: p.status || "",
+      size: p.size || p.size_cat || "",
+      licence: p.licence || "",
+      commercial_use: p.commercial_use,
+      sid: p.sid || p.native_id || ""
+    });
+  }
+
+  function normalizeTitleFeature(f) {
+    if (!f) return f;
+    return {
+      type: "Feature",
+      id: f.id,
+      geometry: f.geometry,
+      properties: normalizeTitleProps(f.properties || {})
+    };
+  }
+
+  function normalizeTitleCollection(gj) {
+    return {
+      type: "FeatureCollection",
+      features: ((gj && gj.features) || []).map(normalizeTitleFeature)
+    };
+  }
+
+  function titleItemFromProps(p, lng, lat) {
+    p = normalizeTitleProps(p);
+    return {
+      kind: "title",
+      state: p.state,
+      life: String(p.status || "live").toLowerCase() === "dead" ? "dead" : "live",
+      name: p.name || "",
+      holder: p.holder || "",
+      tenure: p.tenure || "",
+      lng: lng,
+      lat: lat,
+      props: p
+    };
+  }
+
+  function occItemFromProps(p, lng, lat) {
+    p = normalizeOccProps(p);
+    return {
+      kind: "occ",
+      state: p.state,
+      name: p.name || "",
+      comm: p.comm || "",
+      lng: lng,
+      lat: lat,
+      props: p
+    };
+  }
+
+  function featureCenter(f) {
+    if (!f) return null;
+    if (f.geometry) return geomCenter(f.geometry);
+    const p = f.properties || {};
+    if (p.lng != null && p.lat != null) return [Number(p.lng), Number(p.lat)];
+    if (p.lon != null && p.lat != null) return [Number(p.lon), Number(p.lat)];
+    return null;
+  }
+
+  function selectedLiveStates() {
+    const out = [];
+    STATES.forEach(function (s) {
+      const inp = liveBox ? liveBox.querySelector('input[data-state="' + s.id + '"][data-life="live"]') : null;
+      if (inp && inp.checked && !inp.disabled) out.push(s.id);
+    });
+    return out;
+  }
+
+  const apiHealthPromise = checkApiHealth();
 
   function layerId(state, life) {
     return state + "-" + life;
@@ -259,10 +498,11 @@
   }
 
   function popupHtml(props) {
+    props = normalizeTitleProps(props || {});
     const seed = props.name || props.tenure || props.state || "";
     const name = fillField(props.name, "DEMO unnamed title");
     const rows = [
-      ["State", fillField(props.state, DEMO_NA)],
+      ["State", fillField(props.state ? String(props.state).toUpperCase() : "", DEMO_NA)],
       ["Tenure", fillField(props.tenure, DEMO_NA)],
       ["Status", fillField(props.status, "DEMO current")],
       ["Name", name],
@@ -270,6 +510,8 @@
       ["Grant", fillField(props.grant, DEMO_NA)],
       ["Expiry", fillField(props.expiry, DEMO_NA)]
     ];
+    const lic = commercialUseRow(props);
+    if (lic) rows.push(lic);
     return popupWrap("Title", name, rows);
   }
 
@@ -351,8 +593,10 @@
     add("Size", props.size);
     add("Production", props.prod);
     add("Source id", props.sid);
-    if (String(props.state || "").toLowerCase() === "wa") {
-      rows.push(["Licence", "WA MINEDEX CC BY-NC 4.0"]);
+    const lic = commercialUseRow(props);
+    if (lic) rows.push(lic);
+    else if (String(props.state || "").toLowerCase() === "wa") {
+      rows.push(["Licence", "WA MINEDEX CC BY-NC 4.0 — not for commercial use"]);
     } else if (demo) {
       rows.push(["Licence", DEMO_NA]);
     }
@@ -585,6 +829,11 @@
     updateLegend();
   }
 
+  function applyLayerFilterPair(fill, line, filter) {
+    if (map.getLayer(fill)) map.setFilter(fill, filter);
+    if (map.getLayer(line)) map.setFilter(line, filter);
+  }
+
   function applyTitleSearch(q) {
     if ((vsPair && vsPair[0] && vsPair[1]) || (ground && (ground.company || (ground.titles && ground.titles.length)))) {
       applyGroundFilters();
@@ -605,6 +854,7 @@
         map.setFilter(line, f);
       });
     });
+    applyLiveApiStateFilter(q);
   }
 
   function fitFindHits(hits) {
@@ -697,7 +947,7 @@
     if (it.kind === "occ") return it.name || it.comm || "Occurrence";
     if (it.kind === "holes") return it.name || "Hole cell";
     if (it.kind === "gchem") return it.name || "Sample cell";
-    return it.tenure || it.name || "Title";
+    return it.name || it.tenure || "Title";
   }
 
   function hitSub(it) {
@@ -742,10 +992,13 @@
       findHexKinds.gchem = false;
       findResults.hidden = true;
       findResults.innerHTML = "";
+      findApiSeq += 1;
+      if (liveTitlesUsingApi) clearCompanyOverlay();
       applyTitleSearch("");
       applyOccFilter();
       applyHexFilter("holes");
       applyHexFilter("gchem");
+      if (liveTitlesUsingApi) scheduleLiveTitles();
       return;
     }
     if (!occLoaded && !occLoading) loadOccurrences();
@@ -758,11 +1011,129 @@
       if (!itemMatches(it, findQuery)) continue;
       if (byKind[it.kind]) byKind[it.kind].push(it);
     }
-    const titleN = byKind.title.length;
-    const occN = byKind.occ.length;
+
+    renderFindResults(byKind, {
+      pending: !occLoaded || !holesLoaded || !gchemLoaded,
+      sourceNote: apiStatus.live ? "" : (apiStatus.checked ? "Register offline — searching loaded packs only." : "")
+    });
+
+    if (apiStatus.live) {
+      const seq = ++findApiSeq;
+      findResults.hidden = false;
+      fetchCompanyAndTitles(findQuery).then(function (apiHits) {
+        if (seq !== findApiSeq || findQuery !== String(q || "").trim().toLowerCase()) return;
+        mergeApiFindHits(byKind, apiHits);
+        renderFindResults(byKind, {
+          pending: !occLoaded || !holesLoaded || !gchemLoaded,
+          sourceNote: apiHits.note || "",
+          titleTotal: apiHits.titleCount,
+          occTotal: apiHits.occCount,
+          mapCap: apiHits.mapCap
+        });
+      }).catch(function (err) {
+        if (seq !== findApiSeq) return;
+        renderFindResults(byKind, {
+          pending: !occLoaded || !holesLoaded || !gchemLoaded,
+          sourceNote: "Register query failed (" + ((err && err.message) || "error") + ") — showing loaded packs only."
+        });
+      });
+    }
+
+    applyTitleSearch(findQuery);
+    applyOccFilter();
+    if (holesLoaded) applyHexFilter("holes");
+    if (gchemLoaded) applyHexFilter("gchem");
+    if (liveTitlesUsingApi) scheduleLiveTitles();
+  }
+
+  function mergeApiFindHits(byKind, apiHits) {
+    const seen = {};
+    (byKind.title || []).forEach(function (it) {
+      seen["t:" + titleCoverKey(it.props || it)] = true;
+    });
+    (apiHits.titles || []).forEach(function (it) {
+      const k = "t:" + titleCoverKey(it.props || it);
+      if (seen[k]) return;
+      seen[k] = true;
+      byKind.title.push(it);
+    });
+    const seenOcc = {};
+    (byKind.occ || []).forEach(function (it) {
+      seenOcc["o:" + (it.name || "") + "|" + (it.state || "")] = true;
+    });
+    (apiHits.occs || []).forEach(function (it) {
+      const k = "o:" + (it.name || "") + "|" + (it.state || "");
+      if (seenOcc[k]) return;
+      seenOcc[k] = true;
+      byKind.occ.push(it);
+    });
+  }
+
+  function fetchCompanyAndTitles(q) {
+    return fetchApi("/v1/company", { q: q }, 15000).then(function (data) {
+      const titleCount = Number(data.title_count || 0);
+      const occCount = Number(data.occurrence_count || 0);
+      const titleFeats = ((data.titles && data.titles.features) || []).map(normalizeTitleFeature);
+      const occFeats = ((data.occurrences && data.occurrences.features) || []);
+      const titles = titleFeats.map(function (f) {
+        const c = featureCenter(f) || [null, null];
+        return titleItemFromProps(f.properties, c[0], c[1]);
+      });
+      const occs = occFeats.map(function (f) {
+        const c = featureCenter(f) || [null, null];
+        return occItemFromProps(f.properties || {}, c[0], c[1]);
+      });
+      if (titleFeats.length) setCompanyFeatures(titleFeats, false);
+      else clearCompanyOverlay();
+      companyApiCache[q.toLowerCase()] = { title_count: titleCount, features: titleFeats, occs: occs };
+      if (titleCount > 0) {
+        return {
+          titles: titles,
+          occs: occs,
+          titleCount: titleCount,
+          occCount: occCount,
+          mapCap: titleFeats.length,
+          note: titleCount > titleFeats.length
+            ? "National register · map plots " + titleFeats.length.toLocaleString() + " of " + titleCount.toLocaleString() + " live titles."
+            : "National register."
+        };
+      }
+      return fetchApi("/v1/titles", {
+        bbox: bboxParam(AU_BBOX),
+        status: "live",
+        q: q,
+        limit: "200"
+      }, 15000).then(function (gj) {
+        const feats = normalizeTitleCollection(gj).features || [];
+        const t2 = feats.map(function (f) {
+          const c = featureCenter(f) || [null, null];
+          return titleItemFromProps(f.properties, c[0], c[1]);
+        });
+        if (feats.length) setCompanyFeatures(feats, false);
+        return {
+          titles: t2,
+          occs: occs,
+          titleCount: feats.length,
+          occCount: occCount,
+          mapCap: feats.length,
+          note: feats.length
+            ? "National register title search (substring, capped)."
+            : (occCount ? "National register." : "")
+        };
+      });
+    });
+  }
+
+  function renderFindResults(byKind, opts) {
+    opts = opts || {};
+    const titleN = opts.titleTotal != null ? opts.titleTotal : byKind.title.length;
+    const occN = opts.occTotal != null ? opts.occTotal : byKind.occ.length;
     const holeN = byKind.holes.length;
     const gchemN = byKind.gchem.length;
-    const total = titleN + occN + holeN + gchemN;
+    const listed = byKind.title.length + byKind.occ.length + holeN + gchemN;
+    const total = (opts.titleTotal != null || opts.occTotal != null)
+      ? titleN + occN + holeN + gchemN
+      : listed;
     const allHits = byKind.title.concat(byKind.occ, byKind.holes, byKind.gchem);
 
     findHexKinds.holes = holeN > 0;
@@ -772,9 +1143,9 @@
     byKind.title.forEach(function (it) {
       if (it.life !== "dead" && it.state) titleStates[it.state] = true;
     });
-    Object.keys(titleStates).forEach(ensureLiveTitleOn);
+    if (!liveTitlesUsingApi) Object.keys(titleStates).forEach(ensureLiveTitleOn);
 
-    if (occN) {
+    if (occN || byKind.occ.length) {
       byKind.occ.forEach(function (it) { ensureOverlayStateOn(occBox, "occ", it.state); });
       enableOccLayer();
     }
@@ -789,55 +1160,56 @@
 
     const shown = pickListHits(byKind);
     findResults.hidden = false;
-    const pending = !occLoaded || !holesLoaded || !gchemLoaded;
-    if (!total) {
-      findResults.innerHTML = pending
+    if (!listed && !total) {
+      findResults.innerHTML = opts.pending
         ? '<p class="note">No matches yet — still loading layers…</p>'
-        : '<p class="note">No matches in loaded layers.</p>';
-    } else {
-      const parts = [];
-      parts.push(titleN.toLocaleString() + " title" + (titleN === 1 ? "" : "s"));
-      parts.push(occN.toLocaleString() + " occurrence" + (occN === 1 ? "" : "s"));
-      parts.push(holeN.toLocaleString() + " hole cell" + (holeN === 1 ? "" : "s"));
-      parts.push(gchemN.toLocaleString() + " sample cell" + (gchemN === 1 ? "" : "s"));
-      const extra = shown.length < total
-        ? '<p class="note">Showing ' + shown.length.toLocaleString() + " of " + total.toLocaleString() + ". Map plots matching features.</p>"
-        : "";
-      findResults.innerHTML =
-        '<div class="find-summary"><strong>' +
-        total.toLocaleString() +
-        " match" + (total === 1 ? "" : "es") +
-        "</strong> · " +
-        escapeHtml(parts.join(" · ")) +
-        "</div>" +
-        extra +
-        shown.map(function (it, i) {
-          return (
-            '<button type="button" class="find-hit" data-i="' + i + '"><strong>' +
-            escapeHtml(String(hitLabel(it))) +
-            "</strong><span>" +
-            escapeHtml(String(hitSub(it))) +
-            "</span></button>"
-          );
-        }).join("");
-      findResults.querySelectorAll(".find-hit").forEach(function (btn, i) {
-        btn.addEventListener("click", function () {
-          const it = shown[i];
-          if (!it || it.lng == null) return;
-          findUserPicked = true;
-          map.easeTo({ center: [it.lng, it.lat], zoom: Math.max(map.getZoom(), 9) });
-          if (it.kind === "title") showTitleIdentify({ lng: it.lng, lat: it.lat }, it.props || {});
-          else if (it.kind === "holes") showHexIdentify({ lng: it.lng, lat: it.lat }, it.props || {}, "Holes");
-          else if (it.kind === "gchem") showHexIdentify({ lng: it.lng, lat: it.lat }, it.props || {}, "Samples");
-          else showOccIdentify({ lng: it.lng, lat: it.lat }, it.props || {});
-        });
-      });
-      if (!findUserPicked) fitFindHits(allHits);
+        : '<p class="note">' + (opts.sourceNote || "No matches in loaded layers.") + "</p>";
+      return;
     }
-    applyTitleSearch(findQuery);
-    applyOccFilter();
-    if (holesLoaded) applyHexFilter("holes");
-    if (gchemLoaded) applyHexFilter("gchem");
+    const parts = [];
+    parts.push(Number(titleN).toLocaleString() + " title" + (titleN === 1 ? "" : "s"));
+    parts.push(Number(occN).toLocaleString() + " occurrence" + (occN === 1 ? "" : "s"));
+    parts.push(holeN.toLocaleString() + " hole cell" + (holeN === 1 ? "" : "s"));
+    parts.push(gchemN.toLocaleString() + " sample cell" + (gchemN === 1 ? "" : "s"));
+    let extra = "";
+    if (opts.mapCap != null && titleN > opts.mapCap) {
+      extra = '<p class="note">Showing ' + shown.length.toLocaleString() + " in the list. " +
+        escapeHtml(opts.sourceNote || "") + "</p>";
+    } else if (shown.length < listed) {
+      extra = '<p class="note">Showing ' + shown.length.toLocaleString() + " of " + listed.toLocaleString() + ". Map plots matching features.</p>";
+    } else if (opts.sourceNote) {
+      extra = '<p class="note">' + escapeHtml(opts.sourceNote) + "</p>";
+    }
+    findResults.innerHTML =
+      '<div class="find-summary"><strong>' +
+      Number(total).toLocaleString() +
+      " match" + (total === 1 ? "" : "es") +
+      "</strong> · " +
+      escapeHtml(parts.join(" · ")) +
+      "</div>" +
+      extra +
+      shown.map(function (it, i) {
+        return (
+          '<button type="button" class="find-hit" data-i="' + i + '"><strong>' +
+          escapeHtml(String(hitLabel(it))) +
+          "</strong><span>" +
+          escapeHtml(String(hitSub(it))) +
+          "</span></button>"
+        );
+      }).join("");
+    findResults.querySelectorAll(".find-hit").forEach(function (btn, i) {
+      btn.addEventListener("click", function () {
+        const it = shown[i];
+        if (!it || it.lng == null) return;
+        findUserPicked = true;
+        map.easeTo({ center: [it.lng, it.lat], zoom: Math.max(map.getZoom(), 9) });
+        if (it.kind === "title") showTitleIdentify({ lng: it.lng, lat: it.lat }, it.props || {});
+        else if (it.kind === "holes") showHexIdentify({ lng: it.lng, lat: it.lat }, it.props || {}, "Holes");
+        else if (it.kind === "gchem") showHexIdentify({ lng: it.lng, lat: it.lat }, it.props || {}, "Samples");
+        else showOccIdentify({ lng: it.lng, lat: it.lat }, it.props || {});
+      });
+    });
+    if (!findUserPicked) fitFindHits(allHits);
   }
 
   function updateLegend() {
@@ -874,6 +1246,13 @@
     }
     if (reportsMaster && reportsMaster.checked) {
       rows.push('<div class="legend-row"><span class="swatch round" style="background:#7ec4ff"></span><span>Joined reports</span></div>');
+    }
+    if (liveTitlesUsingApi) {
+      rows.unshift(
+        '<div class="legend-row"><span class="swatch" style="background:#d4d4d8"></span><span>Live titles (register' +
+          (lastLiveTitlesTruncated ? ", viewport capped" : "") +
+          ")</span></div>"
+      );
     }
     if (vsPair && vsPair[0] && vsPair[1]) {
       rows.unshift(
@@ -962,6 +1341,132 @@
     const v = visible ? "visible" : "none";
     map.setLayoutProperty(fill, "visibility", v);
     map.setLayoutProperty(line, "visibility", v);
+    if (life === "live" && liveTitlesUsingApi) applyLiveApiStateFilter(findQuery);
+  }
+
+  function liveApiFilter(q) {
+    const ids = selectedLiveStates();
+    const stateFilter = !ids.length
+      ? ["==", ["get", "name"], "__none__"]
+      : (ids.length === STATES.length ? null : ["in", ["get", "state"], ["literal", ids]]);
+    if (q && !ground.company && !(vsPair && vsPair[0] && vsPair[1]) && !(ground.titles && ground.titles.length)) {
+      const search = titleSearchFilter(q);
+      return stateFilter ? ["all", stateFilter, search] : search;
+    }
+    return stateFilter;
+  }
+
+  function applyLiveApiStateFilter(q) {
+    const f = liveApiFilter(q || findQuery);
+    applyLayerFilterPair(LIVE_TITLES_FILL, LIVE_TITLES_LINE, f);
+  }
+
+  function ensureApiTitleLayers() {
+    if (!map.getSource(LIVE_TITLES_SRC)) {
+      map.addSource(LIVE_TITLES_SRC, { type: "geojson", data: emptyFC(), generateId: true });
+      map.addLayer({
+        id: LIVE_TITLES_FILL,
+        type: "fill",
+        source: LIVE_TITLES_SRC,
+        paint: { "fill-color": stateColorExpr(), "fill-opacity": 0.28 }
+      });
+      map.addLayer({
+        id: LIVE_TITLES_LINE,
+        type: "line",
+        source: LIVE_TITLES_SRC,
+        paint: { "line-color": stateColorExpr(), "line-width": 1.1, "line-opacity": 0.9 }
+      });
+      map.on("mouseenter", LIVE_TITLES_FILL, function () { map.getCanvas().style.cursor = "pointer"; });
+      map.on("mouseleave", LIVE_TITLES_FILL, function () { map.getCanvas().style.cursor = ""; });
+    }
+    if (!map.getSource(COMPANY_SRC)) {
+      map.addSource(COMPANY_SRC, { type: "geojson", data: emptyFC(), generateId: true });
+      map.addLayer({
+        id: COMPANY_FILL,
+        type: "fill",
+        source: COMPANY_SRC,
+        paint: { "fill-color": stateColorExpr(), "fill-opacity": 0.38 }
+      });
+      map.addLayer({
+        id: COMPANY_LINE,
+        type: "line",
+        source: COMPANY_SRC,
+        paint: { "line-color": stateColorExpr(), "line-width": 1.4, "line-opacity": 0.95 }
+      });
+      map.on("mouseenter", COMPANY_FILL, function () { map.getCanvas().style.cursor = "pointer"; });
+      map.on("mouseleave", COMPANY_FILL, function () { map.getCanvas().style.cursor = ""; });
+    }
+    liveTitlesUsingApi = true;
+  }
+
+  function setCompanyFeatures(features, vsMode) {
+    ensureApiTitleLayers();
+    const gj = { type: "FeatureCollection", features: features || [] };
+    const src = map.getSource(COMPANY_SRC);
+    if (src) src.setData(gj);
+    if (vsMode && vsPair && vsPair[0] && vsPair[1]) {
+      const paint = [
+        "case",
+        ["==", ["get", "_vs"], "a"], VS_A_COLOR,
+        ["==", ["get", "_vs"], "b"], VS_B_COLOR,
+        stateColorExpr()
+      ];
+      if (map.getLayer(COMPANY_FILL)) map.setPaintProperty(COMPANY_FILL, "fill-color", paint);
+      if (map.getLayer(COMPANY_LINE)) map.setPaintProperty(COMPANY_LINE, "line-color", paint);
+    } else {
+      if (map.getLayer(COMPANY_FILL)) map.setPaintProperty(COMPANY_FILL, "fill-color", stateColorExpr());
+      if (map.getLayer(COMPANY_LINE)) map.setPaintProperty(COMPANY_LINE, "line-color", stateColorExpr());
+    }
+    const hideLive = !!(features && features.length);
+    if (map.getLayer(LIVE_TITLES_FILL)) {
+      map.setLayoutProperty(LIVE_TITLES_FILL, "visibility", hideLive ? "none" : "visible");
+      map.setLayoutProperty(LIVE_TITLES_LINE, "visibility", hideLive ? "none" : "visible");
+    }
+  }
+
+  function clearCompanyOverlay() {
+    if (map.getSource(COMPANY_SRC)) map.getSource(COMPANY_SRC).setData(emptyFC());
+    if (map.getLayer(LIVE_TITLES_FILL)) {
+      map.setLayoutProperty(LIVE_TITLES_FILL, "visibility", "visible");
+      map.setLayoutProperty(LIVE_TITLES_LINE, "visibility", "visible");
+    }
+    if (map.getLayer(COMPANY_FILL)) map.setPaintProperty(COMPANY_FILL, "fill-color", stateColorExpr());
+    if (map.getLayer(COMPANY_LINE)) map.setPaintProperty(COMPANY_LINE, "line-color", stateColorExpr());
+  }
+
+  function refreshLiveTitles() {
+    if (!apiStatus.live || !map.getSource(LIVE_TITLES_SRC)) return Promise.resolve();
+    const zoom = map.getZoom();
+    const limit = liveTitlesLimit(zoom);
+    if (!limit) {
+      lastLiveTitlesTruncated = false;
+      map.getSource(LIVE_TITLES_SRC).setData(emptyFC());
+      return Promise.resolve();
+    }
+    const seq = ++liveTitlesSeq;
+    const bbox = bboxParam(mapBbox());
+    const params = { bbox: bbox, status: "live", limit: String(limit) };
+    if (ground && ground.company && !(vsPair && vsPair[0])) params.holder = ground.company;
+    if (findQuery && !params.holder) params.q = findQuery;
+    return fetchApi("/v1/titles", params, 18000).then(function (gj) {
+      if (seq !== liveTitlesSeq) return;
+      const norm = normalizeTitleCollection(gj);
+      lastLiveTitlesTruncated = (norm.features || []).length >= limit;
+      map.getSource(LIVE_TITLES_SRC).setData(norm);
+      applyLiveApiStateFilter(findQuery);
+      if (vsPair || (ground && (ground.company || (ground.titles && ground.titles.length)))) {
+        applyGroundFilters();
+      }
+    }).catch(function (err) {
+      if (seq !== liveTitlesSeq) return;
+      log("Live titles API: " + ((err && err.message) || "failed") + " — keeping last layer.");
+    });
+  }
+
+  function scheduleLiveTitles() {
+    if (!apiStatus.live) return;
+    if (liveTitlesTimer) clearTimeout(liveTitlesTimer);
+    liveTitlesTimer = setTimeout(function () { refreshLiveTitles(); }, 350);
   }
 
   function buildToggles() {
@@ -982,7 +1487,7 @@
         '"></span>' +
         "<span>" +
         s.name +
-        (liveMeta.features ? " · " + Number(liveMeta.features).toLocaleString() : "") +
+        (apiStatus.live ? "" : (liveMeta.features ? " · " + Number(liveMeta.features).toLocaleString() : "")) +
         "</span>";
       liveBox.appendChild(liveLabel);
 
@@ -1259,6 +1764,8 @@
 
   function titleFillIds() {
     const ids = [];
+    if (map.getLayer(LIVE_TITLES_FILL)) ids.push(LIVE_TITLES_FILL);
+    if (map.getLayer(COMPANY_FILL)) ids.push(COMPANY_FILL);
     STATES.forEach(function (s) {
       ["live", "dead"].forEach(function (life) {
         const id = layerId(s.id, life) + "-fill";
@@ -1633,6 +2140,11 @@
     if (!st) return;
 
     updateLegend();
+    if (life === "live" && liveTitlesUsingApi) {
+      applyLiveApiStateFilter(findQuery);
+      log(state.toUpperCase() + " live " + (t.checked ? "shown" : "hidden") + " on the register layer");
+      return;
+    }
     if (t.checked) {
       log("Loading " + state.toUpperCase() + " " + life + "…");
       addStateLayers(state, life, st.color)
@@ -1803,7 +2315,7 @@
   });
 
 
-  const ASSET_V = "20260820h";
+  const ASSET_V = "20260823a";
   const VS_A_COLOR = "#3d9cf0";
   const VS_B_COLOR = "#e83e8c";
   const GROUND_KEY = "xplorr.myground";
@@ -2454,6 +2966,8 @@
   }
 
   function countTitlesForCompany(q) {
+    const cached = companyApiCache[String(q || "").toLowerCase()];
+    if (cached && cached.title_count != null) return cached.title_count;
     let n = 0;
     findIndex.forEach(function (it) {
       if (it.kind !== "title" || itemIsDemo(it) || it.life === "dead") return;
@@ -2535,6 +3049,11 @@
       } else {
         groundStatus.textContent = "Saved in this browser. Share with ?company=BHP or ?vs=BHP,RIO.";
       }
+      if (apiStatus.live && (company || (vs && vs[0]))) {
+        groundStatus.textContent += " National register.";
+      } else if (!apiStatus.live && apiStatus.checked && (company || (vs && vs[0]))) {
+        groundStatus.textContent += " Register offline — counts from loaded packs.";
+      }
     }
     updateLegend();
   }
@@ -2546,22 +3065,77 @@
       try { localStorage.setItem(GROUND_KEY, JSON.stringify(stored)); } catch (e) {}
       syncShareUrl();
     }
-    applyGroundFilters();
+    const jobs = [];
     if (vsPair && vsPair[0]) {
-      ensureLiveForCompany(vsPair[0]);
-      ensureLiveForCompany(vsPair[1]);
+      jobs.push(ensureLiveForCompany(vsPair[0]));
+      jobs.push(ensureLiveForCompany(vsPair[1]));
     } else if (ground.company) {
-      ensureLiveForCompany(ground.company);
+      jobs.push(ensureLiveForCompany(ground.company));
     }
+    Promise.all(jobs).then(function () {
+      if (apiStatus.live) plotCompanyGroundOverlay();
+      applyGroundFilters();
+      if (liveTitlesUsingApi) scheduleLiveTitles();
+    });
+  }
+
+  function plotCompanyGroundOverlay() {
+    if (!apiStatus.live) return;
+    if (vsPair && vsPair[0] && vsPair[1]) {
+      const a = companyApiCache[String(vsPair[0]).toLowerCase()] || { features: [] };
+      const b = companyApiCache[String(vsPair[1]).toLowerCase()] || { features: [] };
+      const feats = [];
+      (a.features || []).forEach(function (f) {
+        const p = Object.assign({}, f.properties || {}, { _vs: "a" });
+        feats.push({ type: "Feature", id: f.id, geometry: f.geometry, properties: p });
+      });
+      (b.features || []).forEach(function (f) {
+        const p = Object.assign({}, f.properties || {}, { _vs: "b" });
+        feats.push({ type: "Feature", id: f.id, geometry: f.geometry, properties: p });
+      });
+      setCompanyFeatures(feats, true);
+      return;
+    }
+    if (ground.company) {
+      const rec = companyApiCache[String(ground.company).toLowerCase()];
+      if (rec && rec.features && rec.features.length) {
+        setCompanyFeatures(rec.features, false);
+        return;
+      }
+    }
+    if (!findQuery) clearCompanyOverlay();
   }
 
   function ensureLiveForCompany(q) {
+    if (!q) return;
+    if (apiStatus.live) {
+      const key = String(q).toLowerCase();
+      if (companyApiCache[key] && companyApiCache[key].features) {
+        return Promise.resolve(companyApiCache[key]);
+      }
+      return fetchApi("/v1/company", { q: q }, 15000).then(function (data) {
+        const feats = ((data.titles && data.titles.features) || []).map(normalizeTitleFeature);
+        companyApiCache[key] = {
+          title_count: Number(data.title_count || 0),
+          features: feats,
+          occs: ((data.occurrences && data.occurrences.features) || []).map(function (f) {
+            const c = featureCenter(f) || [null, null];
+            return occItemFromProps(f.properties || {}, c[0], c[1]);
+          })
+        };
+        return companyApiCache[key];
+      }).catch(function (err) {
+        log("Company register: " + ((err && err.message) || "failed"));
+        return null;
+      });
+    }
     const states = {};
     findIndex.forEach(function (it) {
       if (it.kind !== "title" || it.life === "dead") return;
       if (holderMatchesCompany(it.holder || "", q)) states[it.state] = true;
     });
     Object.keys(states).forEach(ensureLiveTitleOn);
+    return Promise.resolve(null);
   }
 
   function initGroundUi() {
@@ -2573,7 +3147,9 @@
       groundToForm();
       try { localStorage.removeItem(GROUND_KEY); } catch (e) {}
       syncShareUrl();
+      if (liveTitlesUsingApi) clearCompanyOverlay();
       applyGroundFilters();
+      if (liveTitlesUsingApi) scheduleLiveTitles();
     });
     if (groundPin) groundPin.addEventListener("click", function () {
       if (lastTitle && lastTitle.name) pinTitleName(lastTitle.name);
@@ -2772,6 +3348,31 @@
     return 6;
   }
 
+  function sampleOpenGroundApi(bounds) {
+    const n = 3;
+    const stepLng = (bounds.east - bounds.west) / n;
+    const stepLat = (bounds.north - bounds.south) / n;
+    const pts = [];
+    for (let r = 0; r < n; r++) {
+      for (let c = 0; c < n; c++) {
+        pts.push({
+          lng: bounds.west + (c + 0.5) * stepLng,
+          lat: bounds.south + (r + 0.5) * stepLat
+        });
+      }
+    }
+    return Promise.all(pts.map(function (pt) {
+      return fetchApi("/v1/open-ground", { lng: pt.lng, lat: pt.lat }, 8000);
+    })).then(function (rows) {
+      let vacant = 0, held = 0;
+      rows.forEach(function (data) {
+        if (data && data.open) vacant += 1;
+        else held += 1;
+      });
+      return { n: pts.length, vacant: vacant, held: held, grid: n };
+    });
+  }
+
   function sampleOpenGround(bounds, stateIds) {
     const n = sampleGridSize(bounds);
     let vacant = 0;
@@ -2789,7 +3390,12 @@
     return { n: n * n, vacant: vacant, held: held, grid: n };
   }
 
-  function ensureLiveStates(stateIds) {
+  function ensureLiveStates(stateIds, forceStatic) {
+    if (apiStatus.live && !forceStatic) {
+      ensureApiTitleLayers();
+      scheduleLiveTitles();
+      return Promise.resolve((stateIds || []).map(function () { return true; }));
+    }
     const jobs = (stateIds || []).map(function (id) {
       const inp = liveBox ? liveBox.querySelector('input[data-state="' + id + '"][data-life="live"]') : null;
       if (inp && inp.disabled) return Promise.resolve(false);
@@ -2836,14 +3442,155 @@
       btn.setAttribute("aria-pressed", openGroundMode ? "true" : "false");
     }
     if (openGroundMode) {
-      ensureLiveStates(statesInView());
-      log("Open ground on — click the map. Live titles load for states in view.");
+      if (apiStatus.live) {
+        log("Open ground on — click the map. Checking the live national register.");
+      } else {
+        ensureLiveStates(statesInView());
+        log("Open ground on — click the map. Register offline; using loaded title packs.");
+      }
       if (shareVal) setOpenParam(shareVal);
       else if (!new URL(window.location.href).searchParams.get("open")) setOpenParam("1");
     } else {
       setOpenParam("");
       log("Open ground off");
     }
+  }
+
+  function renderOpenGroundPopup(lngLat, titles, opts) {
+    opts = opts || {};
+    const lng = lngLat.lng;
+    const lat = lngLat.lat;
+    const share = fmtCoord(lng) + "," + fmtCoord(lat);
+    const disclaimer = openDisclaimerHtml();
+    if (opts.act) {
+      popup.setHTML(
+        popupWrap("Open ground", "ACT has no titles register", [
+          ["Longitude", fmtCoord(lng)],
+          ["Latitude", fmtCoord(lat)],
+          ["Coverage", "ACT is not in the state title feeds"]
+        ], "popup-open") + disclaimer
+      );
+      if (openGroundMode) setOpenParam(share);
+      return;
+    }
+    if (opts.failed) {
+      popup.setHTML(
+        popupWrap("Open ground", opts.failedTitle || "Could not check titles", [
+          ["Longitude", fmtCoord(lng)],
+          ["Latitude", fmtCoord(lat)],
+          ["Status", opts.failed]
+        ], "popup-open") +
+        '<p class="popup-more">Not marking this point as open.</p>'
+      );
+      return;
+    }
+    if (!titles.length) {
+      popup.setHTML(
+        popupWrap("Open ground", "No live title covers this point", [
+          ["Status", "Open ground"],
+          ["State", opts.stateLabel || ""],
+          ["Longitude", fmtCoord(lng)],
+          ["Latitude", fmtCoord(lat)],
+          ["Source", opts.source || "Live register"]
+        ].filter(function (r) { return r[1]; }), "popup-open") + disclaimer
+      );
+      if (openGroundMode) setOpenParam(share);
+      return;
+    }
+    const first = titles[0].props || titles[0] || {};
+    const np = normalizeTitleProps(first);
+    const heading = titles.length === 1
+      ? fillField(np.name, "Live title")
+      : titles.length.toLocaleString() + " live titles cover this point";
+    const rows = [
+      ["State", fillField(np.state ? String(np.state).toUpperCase() : "", DEMO_NA)],
+      ["Tenure", fillField(np.tenure, DEMO_NA)],
+      ["Status", fillField(np.status, "DEMO current")],
+      ["Name", fillField(np.name, "DEMO unnamed title")],
+      ["Holder", fillField(np.holder, demoHolder(np.name || np.tenure || ""))],
+      ["Grant", fillField(np.grant, DEMO_NA)],
+      ["Expiry", fillField(np.expiry, DEMO_NA)]
+    ];
+    const lic = commercialUseRow(np);
+    if (lic) rows.push(lic);
+    let html = popupWrap("Held", heading, rows, "popup-held");
+    html += '<div class="popup-links"><h4>Covering live titles</h4>';
+    titles.slice(0, 8).forEach(function (t, i) {
+      const p = normalizeTitleProps(t.props || t);
+      const label = p.name || p.tenure || "Title";
+      const sub = [p.state ? String(p.state).toUpperCase() : "", p.tenure || "", p.holder || ""].filter(Boolean).join(" · ");
+      html +=
+        '<button type="button" class="find-hit open-title" data-i="' +
+        i +
+        '"><strong>' +
+        escapeHtml(String(label)) +
+        "</strong><span>" +
+        escapeHtml(sub) +
+        "</span></button>";
+    });
+    if (titles.length > 8) {
+      html += '<p class="popup-more">Showing 8 of ' + titles.length.toLocaleString() + "</p>";
+    }
+    html += "</div>";
+    html += '<button type="button" class="popup-pin" id="pin-this">Pin this title</button>';
+    html += disclaimer;
+    popup.setHTML(html);
+    lastTitle = { name: np.name, holder: np.holder, state: np.state, lng: lng, lat: lat };
+    bindPinButton(np);
+    const root = popup.getElement();
+    if (root) {
+      root.querySelectorAll(".open-title").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          const t = titles[Number(btn.getAttribute("data-i"))];
+          if (t) showTitleIdentify(lngLat, t.props || t);
+        });
+      });
+    }
+    if (openGroundMode) setOpenParam(share);
+  }
+
+  function showOpenGroundFromIndex(lngLat) {
+    const lng = lngLat.lng;
+    const lat = lngLat.lat;
+    if (isInAct(lng, lat)) {
+      renderOpenGroundPopup(lngLat, [], { act: true });
+      return Promise.resolve();
+    }
+    const states = statesForPoint(lng, lat);
+    if (!states.length) {
+      popup.setHTML(
+        popupWrap("Open ground", "Outside title coverage", [
+          ["Longitude", fmtCoord(lng)],
+          ["Latitude", fmtCoord(lat)],
+          ["Coverage", "Outside NSW, VIC, QLD, WA, SA, TAS, NT bounding boxes"]
+        ], "popup-open") +
+        '<p class="popup-more">No state title layer is loaded for this point. ACT has no titles register. This is not a vacant-land listing.</p>'
+      );
+      if (openGroundMode) setOpenParam(fmtCoord(lng) + "," + fmtCoord(lat));
+      return Promise.resolve();
+    }
+    return ensureLiveStates(states, true).then(function (oks) {
+      if (!popup.isOpen()) return;
+      const failed = [];
+      states.forEach(function (id, i) {
+        if (oks[i] === false && !liveTitleIndex[id]) {
+          const meta = layerMeta[id + "_live"];
+          if (meta && meta.features) failed.push(id.toUpperCase());
+        }
+      });
+      if (failed.length) {
+        renderOpenGroundPopup(lngLat, [], {
+          failed: "Could not load live titles for " + failed.join(", ") + ".",
+          failedTitle: "Titles not loaded"
+        });
+        return;
+      }
+      const titles = titlesCoveringPoint(lng, lat, states);
+      renderOpenGroundPopup(lngLat, titles, {
+        stateLabel: states.map(function (s) { return s.toUpperCase(); }).join(" / "),
+        source: "Static title packs (register offline or API error)"
+      });
+    });
   }
 
   function showOpenGroundIdentify(lngLat) {
@@ -2858,114 +3605,31 @@
     ).addTo(map);
 
     if (isInAct(lng, lat)) {
-      popup.setHTML(
-        popupWrap("Open ground", "ACT has no titles register", [
-          ["Longitude", fmtCoord(lng)],
-          ["Latitude", fmtCoord(lat)],
-          ["Coverage", "ACT is not in the state title feeds"]
-        ], "popup-open") + openDisclaimerHtml()
-      );
-      if (openGroundMode) setOpenParam(fmtCoord(lng) + "," + fmtCoord(lat));
+      renderOpenGroundPopup(lngLat, [], { act: true });
       return Promise.resolve();
     }
 
-    const states = statesForPoint(lng, lat);
-    if (!states.length) {
-      popup.setHTML(
-        popupWrap("Open ground", "Outside title coverage", [
-          ["Longitude", fmtCoord(lng)],
-          ["Latitude", fmtCoord(lat)],
-          ["Coverage", "Outside NSW, VIC, QLD, WA, SA, TAS, NT bounding boxes"]
-        ], "popup-open") +
-        '<p class="popup-more">No state title layer is loaded for this point. ACT has no titles register. This is not a vacant-land listing.</p>'
-      );
-      if (openGroundMode) setOpenParam(fmtCoord(lng) + "," + fmtCoord(lat));
-      return Promise.resolve();
+    if (!apiStatus.live) {
+      if (apiStatus.checked) {
+        log("Register offline — open-ground using loaded title packs.");
+      }
+      return showOpenGroundFromIndex(lngLat);
     }
 
-    return ensureLiveStates(states).then(function (oks) {
+    return fetchApi("/v1/open-ground", { lng: lng, lat: lat }, 12000).then(function (data) {
       if (!popup.isOpen()) return;
-      const failed = [];
-      states.forEach(function (id, i) {
-        if (oks[i] === false && !liveTitleIndex[id]) {
-          const meta = layerMeta[id + "_live"];
-          if (meta && meta.features) failed.push(id.toUpperCase());
-        }
+      const titles = (data.titles || []).map(function (t) {
+        return { props: normalizeTitleProps(t) };
       });
-      if (failed.length) {
-        popup.setHTML(
-          popupWrap("Open ground", "Titles not loaded", [
-            ["Longitude", fmtCoord(lng)],
-            ["Latitude", fmtCoord(lat)],
-            ["States", failed.join(", ")]
-          ], "popup-open") +
-          '<p class="popup-more">Could not load live titles for ' +
-          escapeHtml(failed.join(", ")) +
-          ". Not marking this point as open.</p>"
-        );
-        return;
-      }
-      const titles = titlesCoveringPoint(lng, lat, states);
-      const share = fmtCoord(lng) + "," + fmtCoord(lat);
-      if (!titles.length) {
-        popup.setHTML(
-          popupWrap("Open ground", "No live title covers this point", [
-            ["Status", "Open ground"],
-            ["State", states.map(function (s) { return s.toUpperCase(); }).join(" / ")],
-            ["Longitude", fmtCoord(lng)],
-            ["Latitude", fmtCoord(lat)]
-          ], "popup-open") + openDisclaimerHtml()
-        );
-        if (openGroundMode) setOpenParam(share);
-        return;
-      }
-      const first = titles[0].props || {};
-      const seed = first.name || first.tenure || first.state || "";
-      const heading = titles.length === 1
-        ? fillField(first.name, "Live title")
-        : titles.length.toLocaleString() + " live titles cover this point";
-      let html = popupWrap("Held", heading, [
-        ["State", fillField(first.state, DEMO_NA)],
-        ["Tenure", fillField(first.tenure, DEMO_NA)],
-        ["Status", fillField(first.status, "DEMO current")],
-        ["Name", fillField(first.name, "DEMO unnamed title")],
-        ["Holder", fillField(first.holder, demoHolder(seed))],
-        ["Grant", fillField(first.grant, DEMO_NA)],
-        ["Expiry", fillField(first.expiry, DEMO_NA)]
-      ], "popup-held");
-      html += '<div class="popup-links"><h4>Covering live titles</h4>';
-      titles.slice(0, 8).forEach(function (t, i) {
-        const p = t.props || {};
-        const label = p.name || p.tenure || "Title";
-        const sub = [p.state ? String(p.state).toUpperCase() : "", p.tenure || "", p.holder || ""].filter(Boolean).join(" · ");
-        html +=
-          '<button type="button" class="find-hit open-title" data-i="' +
-          i +
-          '"><strong>' +
-          escapeHtml(String(label)) +
-          "</strong><span>" +
-          escapeHtml(sub) +
-          "</span></button>";
+      renderOpenGroundPopup(lngLat, titles, {
+        source: "Live national register",
+        stateLabel: titles[0] && titles[0].props && titles[0].props.state
+          ? String(titles[0].props.state).toUpperCase()
+          : ""
       });
-      if (titles.length > 8) {
-        html += '<p class="popup-more">Showing 8 of ' + titles.length.toLocaleString() + "</p>";
-      }
-      html += "</div>";
-      html += '<button type="button" class="popup-pin" id="pin-this">Pin this title</button>';
-      html += openDisclaimerHtml();
-      popup.setHTML(html);
-      lastTitle = { name: first.name, holder: first.holder, state: first.state, lng: lng, lat: lat };
-      bindPinButton(first);
-      const root = popup.getElement();
-      if (root) {
-        root.querySelectorAll(".open-title").forEach(function (btn) {
-          btn.addEventListener("click", function () {
-            const t = titles[Number(btn.getAttribute("data-i"))];
-            if (t) showTitleIdentify(lngLat, t.props || {});
-          });
-        });
-      }
-      if (openGroundMode) setOpenParam(share);
+    }).catch(function (err) {
+      log("Open ground API failed — using loaded titles. " + ((err && err.message) || ""));
+      return showOpenGroundFromIndex(lngLat);
     });
   }
 
@@ -2978,7 +3642,8 @@
     }
     map.on("moveend", function () {
       if (!openGroundMode) return;
-      ensureLiveStates(statesInView());
+      if (apiStatus.live) scheduleLiveTitles();
+      else ensureLiveStates(statesInView());
     });
     const raw = new URL(window.location.href).searchParams.get("open");
     if (raw == null) return;
@@ -3042,21 +3707,67 @@
     if (!holesLoaded && !holesLoading) loadHex("holes");
     if (!gchemLoaded && !gchemLoading) loadHex("gchem");
     const boxStates = statesForBounds(bounds);
-    Promise.all([ensureLiveStates(boxStates), ensureReports()]).then(function () {
+    const aoiJob = apiStatus.live
+      ? fetchApi("/v1/aoi", { bbox: bboxParam(bounds) }, 25000).catch(function (err) {
+          log("Box pack AOI failed: " + ((err && err.message) || "error"));
+          return null;
+        })
+      : Promise.resolve(null);
+    const openJob = apiStatus.live
+      ? sampleOpenGroundApi(bounds).catch(function () { return null; })
+      : Promise.resolve(null);
+    Promise.all([ensureLiveStates(boxStates), ensureReports(), aoiJob, openJob]).then(function (results) {
+      const aoi = results[2];
+      const openSample = results[3];
+      const staticReady = (!aoi)
+        ? ensureLiveStates(boxStates, true)
+        : Promise.resolve();
+      return staticReady.then(function () {
+        return { aoi: aoi, openSample: openSample };
+      });
+    }).then(function (results) {
+      const aoi = results.aoi;
+      const openSample = results.openSample;
       const titles = [];
       const occs = [];
       const holes = [];
       const gchems = [];
+      const holeCollars = [];
+      if (aoi) {
+        ((aoi.titles && aoi.titles.features) || []).forEach(function (f) {
+          const p = normalizeTitleProps(f.properties || {});
+          const c = featureCenter(f) || [null, null];
+          titles.push(titleItemFromProps(p, c[0], c[1]));
+        });
+        ((aoi.occurrences && aoi.occurrences.features) || []).forEach(function (f) {
+          const c = featureCenter(f) || [null, null];
+          occs.push(occItemFromProps(f.properties || {}, c[0], c[1]));
+        });
+        ((aoi.holes_sample && aoi.holes_sample.features) || []).forEach(function (f) {
+          const p = f.properties || {};
+          const c = featureCenter(f) || [null, null];
+          holeCollars.push({
+            kind: "hole",
+            state: jurisdictionToState(p.jurisdiction || p.state),
+            name: p.hole_id || p.native_id || "Collar",
+            lng: c[0],
+            lat: c[1],
+            props: p
+          });
+        });
+      }
+      if (!aoi) {
       findIndex.forEach(function (it) {
         if (itemIsDemo(it) || it.lng == null) return;
         if (it.kind === "title" && it.life !== "dead" && pointInBox(it.lng, it.lat, bounds)) titles.push(it);
         else if (it.kind === "occ" && pointInBox(it.lng, it.lat, bounds)) occs.push(it);
       });
+      }
       const titleSeen = {};
       titles.forEach(function (it) {
         titleSeen[titleCoverKey(it.props || { name: it.name, holder: it.holder, state: it.state, tenure: it.tenure })] = true;
       });
-      titlesOverlappingBox(bounds, boxStates).forEach(function (row) {
+      if (!aoi) titlesOverlappingBox(bounds, boxStates).forEach(function (row) {
         const p = row.props || {};
         const k = titleCoverKey(p);
         if (titleSeen[k]) return;
@@ -3127,12 +3838,12 @@
       const openH = document.createElement("h3");
       openH.textContent = "Open ground";
       openWrap.appendChild(openH);
-      const sample = sampleOpenGround(bounds, boxStates);
+      const sample = openSample || sampleOpenGround(bounds, boxStates);
       const openP = document.createElement("p");
       openP.className = "note";
       const pct = sample.n ? Math.round((100 * sample.vacant) / sample.n) : 0;
       let openText;
-      if (!boxStates.length && !lngLatBboxesOverlap(bounds, ACT_BBOX)) {
+      if (!openSample && !boxStates.length && !lngLatBboxesOverlap(bounds, ACT_BBOX)) {
         openText = "This box is outside the state bounding boxes we use to load title layers (NSW, VIC, QLD, WA, SA, TAS, NT).";
       } else if (sample.vacant === sample.n) {
         openText = "All " + sample.n + " sample points have no live title.";
@@ -3144,7 +3855,9 @@
       }
       openText += " Point sample on a " + sample.grid + "×" + sample.grid +
         " grid — not a vacant cadastral polygon.";
-      if (boxStates.length) {
+      if (openSample) {
+        openText += " Checked via the live open-ground register.";
+      } else if (boxStates.length) {
         openText += " Loaded " + boxStates.map(function (s) { return s.toUpperCase(); }).join(", ") + " live titles.";
       }
       if (lngLatBboxesOverlap(bounds, ACT_BBOX)) {
@@ -3157,18 +3870,49 @@
       openD.textContent = OPEN_DISCLAIMER;
       openWrap.appendChild(openD);
       packBody.appendChild(openWrap);
-      packBody.appendChild(section("Live titles", titles, PACK_CAP.title, function (it) {
+      const titleCapLabel = aoi && aoi.title_count > titles.length
+        ? "Live titles · " + aoi.title_count.toLocaleString() + " in box"
+        : "Live titles";
+      packBody.appendChild(section(titleCapLabel, titles, PACK_CAP.title, function (it) {
         return packRow(hitLabel(it), hitSub(it), function () {
           map.easeTo({ center: [it.lng, it.lat], zoom: Math.max(map.getZoom(), 9) });
           showTitleIdentify({ lng: it.lng, lat: it.lat }, it.props || { name: it.name, holder: it.holder, state: it.state, tenure: it.tenure });
         });
       }));
-      packBody.appendChild(section("Occurrences", occs, PACK_CAP.occ, function (it) {
+      const occCapLabel = aoi && aoi.occurrence_count > occs.length
+        ? "Occurrences · " + aoi.occurrence_count.toLocaleString() + " in box"
+        : "Occurrences";
+      packBody.appendChild(section(occCapLabel, occs, PACK_CAP.occ, function (it) {
         return packRow(hitLabel(it), hitSub(it), function () {
           map.easeTo({ center: [it.lng, it.lat], zoom: Math.max(map.getZoom(), 9) });
           showOccIdentify({ lng: it.lng, lat: it.lat }, it.props || {});
         });
       }));
+      if (aoi) {
+        const holeNote = document.createElement("div");
+        holeNote.className = "pack-section";
+        const hh = document.createElement("h3");
+        hh.textContent = "Drillholes · " + Number(aoi.hole_count || 0).toLocaleString() + " collars in box";
+        holeNote.appendChild(hh);
+        const hp = document.createElement("p");
+        hp.className = "note";
+        hp.textContent = "Register count only — not 3.4 million hole features. Showing up to 25 sample collars.";
+        holeNote.appendChild(hp);
+        holeCollars.slice(0, 25).forEach(function (it) {
+          const p = it.props || {};
+          const sub = [
+            (it.state || "").toUpperCase(),
+            p.hole_type || "",
+            p.year || "",
+            p.max_depth_m != null ? p.max_depth_m + " m" : "",
+            commercialUseBlocked(p) ? "not for commercial use" : ""
+          ].filter(Boolean).join(" · ");
+          holeNote.appendChild(packRow(it.name || "Collar", sub, function () {
+            if (it.lng != null) map.easeTo({ center: [it.lng, it.lat], zoom: Math.max(map.getZoom(), 10) });
+          }));
+        });
+        packBody.appendChild(holeNote);
+      }
       packBody.appendChild(section("Hole hexes", holes, PACK_CAP.holes, function (it) {
         return packRow(it.name || "Hole cell", (it.props && it.props.state || it.state || "").toUpperCase() + " · " + (it.props && it.props.top_operators || ""), function () {
           map.easeTo({ center: [it.lng, it.lat], zoom: Math.max(map.getZoom(), 7) });
@@ -3182,6 +3926,13 @@
         });
       }));
       const reports = found.rows;
+      if (aoi && aoi.report_count != null) {
+        const rc = document.createElement("p");
+        rc.className = "note";
+        rc.textContent = "Register reports in box: " + Number(aoi.report_count).toLocaleString() +
+          (aoi.report_count ? "" : " (none, or not yet joined).");
+        packBody.appendChild(rc);
+      }
       packBody.appendChild(section("Reports", reports, PACK_CAP.report, function (r) {
         const href = reportHref(r);
         return packRow(reportLabel(r), (r.st || "").toUpperCase() + (href ? " · open source" : ""), function () {
@@ -3365,20 +4116,121 @@
   }
 
 
+  function identifyListHtml(title, items, render) {
+    let html = '<div class="popup-links"><h4>' + escapeHtml(title) + "</h4>";
+    if (!items.length) {
+      html += '<p class="popup-more">None nearby.</p></div>';
+      return html;
+    }
+    items.forEach(function (it, i) {
+      html +=
+        '<button type="button" class="find-hit ident-hit" data-kind="' +
+        escapeHtml(it.kind || "") +
+        '" data-i="' +
+        i +
+        '"><strong>' +
+        escapeHtml(String(render(it).label)) +
+        "</strong><span>" +
+        escapeHtml(String(render(it).sub)) +
+        "</span></button>";
+    });
+    html += "</div>";
+    return html;
+  }
+
+  function showApiIdentify(lngLat) {
+    const seq = ++identifySeq;
+    popup.setLngLat(lngLat).setHTML(
+      popupWrap("Identify", "Checking the live register…", [
+        ["Longitude", fmtCoord(lngLat.lng)],
+        ["Latitude", fmtCoord(lngLat.lat)]
+      ])
+    ).addTo(map);
+    return fetchApi("/v1/identify", { lng: lngLat.lng, lat: lngLat.lat }, 12000).then(function (data) {
+      if (seq !== identifySeq || !popup.isOpen()) return;
+      const titles = (data.titles || []).map(function (t) { return { props: normalizeTitleProps(t) }; });
+      const occs = (data.occurrences || []).map(function (o) { return occItemFromProps(o, lngLat.lng, lngLat.lat); });
+      const holes = data.holes || [];
+      const reports = data.reports || [];
+      if (titles.length) {
+        renderOpenGroundPopup(lngLat, titles, { source: "Live national register" });
+      } else {
+        renderOpenGroundPopup(lngLat, [], {
+          source: "Live national register",
+          stateLabel: ""
+        });
+      }
+      const root = popup.getElement();
+      if (!root) return;
+      const extra = document.createElement("div");
+      extra.id = "popup-ident-extra";
+      let more = "";
+      more += identifyListHtml("Nearest occurrences", occs.slice(0, 8), function (it) {
+        const p = it.props || {};
+        const km = p.distance_m != null ? (Number(p.distance_m) / 1000).toFixed(1) + " km" : "";
+        const lic = commercialUseBlocked(p) ? "not for commercial use" : "";
+        return {
+          label: it.name || "Occurrence",
+          sub: [String(it.state || "").toUpperCase(), it.comm || "", km, lic].filter(Boolean).join(" · ")
+        };
+      });
+      more += identifyListHtml("Nearest holes", holes.slice(0, 8).map(function (h) {
+        return { kind: "hole", props: h, name: h.hole_id || h.native_id || "Hole" };
+      }), function (it) {
+        const p = it.props || {};
+        const km = p.distance_m != null ? (Number(p.distance_m) / 1000).toFixed(1) + " km" : "";
+        const lic = commercialUseBlocked(p) ? "not for commercial use" : "";
+        return {
+          label: it.name,
+          sub: [String(p.jurisdiction || "").toUpperCase(), p.year || "", p.hole_type || "", km, lic].filter(Boolean).join(" · ")
+        };
+      });
+      if (reports.length) {
+        more += '<div class="popup-links"><h4>Reports</h4>';
+        reports.slice(0, 6).forEach(function (r) {
+          const label = r.title || r.name || r.id || "Report";
+          const href = safeHttpUrl(r.url || r.href || "");
+          if (href) {
+            more += '<a class="popup-link" href="' + escapeHtml(href) + '" target="_blank" rel="noopener">' + escapeHtml(String(label)) + "</a>";
+          } else {
+            more += '<div class="popup-id">' + escapeHtml(String(label)) + "</div>";
+          }
+        });
+        more += "</div>";
+      }
+      extra.innerHTML = more;
+      const content = root.querySelector(".maplibregl-popup-content");
+      if (content) content.appendChild(extra);
+      extra.querySelectorAll(".ident-hit").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          const kind = btn.getAttribute("data-kind");
+          const i = Number(btn.getAttribute("data-i"));
+          if (kind === "occ" && occs[i]) showOccIdentify(lngLat, occs[i].props || {});
+          else if (kind === "hole") return;
+          else if (titles[i]) showTitleIdentify(lngLat, titles[i].props || {});
+        });
+      });
+    }).catch(function (err) {
+      if (seq !== identifySeq) return;
+      log("Identify API failed — using loaded layers. " + ((err && err.message) || ""));
+      const tLayers = titleFillIds();
+      if (tLayers.length) {
+        const titles = map.queryRenderedFeatures(map.project([lngLat.lng, lngLat.lat]), { layers: tLayers });
+        if (titles.length) {
+          showTitleIdentify(lngLat, titles[0].properties || {});
+          return;
+        }
+      }
+      return showOpenGroundFromIndex(lngLat);
+    });
+  }
+
   map.on("click", function (e) {
     if (skipNextClick) { skipNextClick = false; return; }
     if (boxDrawing) return;
     if (openGroundMode) {
       showOpenGroundIdentify(e.lngLat);
       return;
-    }
-    const tLayers = titleFillIds();
-    if (tLayers.length) {
-      const titles = map.queryRenderedFeatures(e.point, { layers: tLayers });
-      if (titles.length) {
-        showTitleIdentify(e.lngLat, titles[0].properties || {});
-        return;
-      }
     }
     if (map.getLayer("rpt-point") && reportsMaster && reportsMaster.checked) {
       const rpts = map.queryRenderedFeatures(e.point, { layers: ["rpt-point"] });
@@ -3387,7 +4239,7 @@
         return;
       }
     }
-    if (occMaster && occMaster.checked && map.getLayer("occ-clusters")) {
+    if (!apiStatus.live && occMaster && occMaster.checked && map.getLayer("occ-clusters")) {
       const cls = map.queryRenderedFeatures(e.point, { layers: ["occ-clusters"] });
       if (cls.length) {
         const f = cls[0];
@@ -3395,7 +4247,7 @@
         return;
       }
     }
-    if (occMaster && occMaster.checked) {
+    if (!apiStatus.live && occMaster && occMaster.checked) {
       const occLayers = [];
       if (map.getLayer("occ-point")) occLayers.push("occ-point");
       if (map.getLayer("occ-sec-point")) occLayers.push("occ-sec-point");
@@ -3431,6 +4283,18 @@
     if (gaToggle.checked) {
       identifyGa(e.lngLat);
       return;
+    }
+    if (apiStatus.live) {
+      showApiIdentify(e.lngLat);
+      return;
+    }
+    const tLayers = titleFillIds();
+    if (tLayers.length) {
+      const titles = map.queryRenderedFeatures(e.point, { layers: tLayers });
+      if (titles.length) {
+        showTitleIdentify(e.lngLat, titles[0].properties || {});
+        return;
+      }
     }
     showOpenGroundIdentify(e.lngLat);
   });
@@ -3472,30 +4336,50 @@
             bytes: L.bytes
           };
         });
-        buildToggles();
-        const jobs = STATES.map(function (s) {
-          const meta = layerMeta[s.id + "_live"];
-          if (!meta || !meta.features) return Promise.resolve();
-          return addStateLayers(s.id, "live", s.color).then(function () {
-            setVisible(s.id, "live", true);
+        return apiHealthPromise.then(function (liveApi) {
+          if (liveApi) {
+            STATES.forEach(function (s) {
+              if (!layerMeta[s.id + "_live"]) layerMeta[s.id + "_live"] = { features: 1, bytes: 0 };
+            });
+          }
+          buildToggles();
+          function finishReady(msg) {
+            log(msg);
+            initGroundUi();
+            initBoxTool();
+            initOpenGround();
+            applyGroundFromForm(false);
+            ensureReports();
+            if (findQuery && findInput) runFind(findInput.value);
+            updateLegend();
+          }
+          if (liveApi) {
+            ensureApiTitleLayers();
+            map.on("moveend", scheduleLiveTitles);
+            const n = (apiStatus.health && apiStatus.health.titles) || 0;
+            const z = map.getZoom();
+            if (z < LIVE_TITLES_MIN_ZOOM) {
+              finishReady("Ready · live register · " + Number(n).toLocaleString() +
+                " titles. Zoom in (z≥" + LIVE_TITLES_MIN_ZOOM + ") to fill the viewport.");
+              return refreshLiveTitles();
+            }
+            finishReady("Ready · live register · " + Number(n).toLocaleString() + " titles");
+            return refreshLiveTitles();
+          }
+          const jobs = STATES.map(function (s) {
+            const meta = layerMeta[s.id + "_live"];
+            if (!meta || !meta.features) return Promise.resolve();
+            return addStateLayers(s.id, "live", s.color).then(function () {
+              setVisible(s.id, "live", true);
+            });
           });
-        });
-        log("Loading live titles…");
-        return Promise.all(jobs).then(function () {
-          const live = STATES.reduce(function (a, s) {
-            return a + ((layerMeta[s.id + "_live"] || {}).features || 0);
-          }, 0);
-          const dead = STATES.reduce(function (a, s) {
-            return a + ((layerMeta[s.id + "_dead"] || {}).features || 0);
-          }, 0);
-          log("Ready · " + live.toLocaleString() + " live titles");
-          initGroundUi();
-          initBoxTool();
-          initOpenGround();
-          applyGroundFilters();
-          ensureReports();
-          if (findQuery && findInput) runFind(findInput.value);
-          updateLegend();
+          log("Register offline — loading frozen title packs…");
+          return Promise.all(jobs).then(function () {
+            const live = STATES.reduce(function (a, s) {
+              return a + ((layerMeta[s.id + "_live"] || {}).features || 0);
+            }, 0);
+            finishReady("Ready · " + live.toLocaleString() + " live titles (static fallback — register offline)");
+          });
         });
       })
       .catch(function (err) {

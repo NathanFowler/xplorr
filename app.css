@@ -2,8 +2,23 @@
 html, body { margin: 0; height: 100%; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: #0f1419; color: #e7ecf1; }
 #map { position: absolute; top: 0; right: 0; bottom: 0; left: 300px; }
 #panel { position: absolute; top: 0; left: 0; bottom: 0; width: 300px; overflow: auto; background: #151b23; border-right: 1px solid #2a3441; padding: 14px 14px 24px; z-index: 2; }
-h1 { font-size: 1.05rem; margin: 0 0 4px; }
+h1 { font-size: 1.05rem; margin: 0 0 4px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .sub { margin: 0 0 10px; color: #9aa7b5; font-size: 0.78rem; }
+.api-chip {
+  display: inline-block;
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid #2a3441;
+  color: #8a97a6;
+  background: #0f1419;
+  line-height: 1.3;
+}
+.api-chip.live { color: #8fd18f; border-color: #3d8f5a; background: #1a3324; }
+.api-chip.offline { color: #e0b34a; border-color: #8a6a20; background: #3d2a10; }
 h2 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; color: #9aa7b5; margin: 12px 0 8px; }
 h3 { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: #8a97a6; margin: 14px 0 6px; }
 .hint { text-transform: none; letter-spacing: 0; font-weight: 400; color: #6b7785; }

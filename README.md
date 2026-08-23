@@ -1,10 +1,12 @@
 # Xplorr
 
-National live mining and exploration titles, stitched from official state feeds.
+National live mining and exploration titles from official state registers.
 
 Live: https://nathanfowler.github.io/xplorr/
 
-Sidebar is grouped like the state viewers (Find, Titles, Geology, Commodities, More). Find matches title numbers, holders/companies, occurrence names, and hole/geochem operators (DEMO features excluded). Empty popup fields and a few missing layers are clearly marked **DEMO**, not real.
+The public map queries a read-only PostGIS API (`https://xplorr.143.198.52.4.sslip.io`) for open-ground, company search, click identify, viewport titles, and box-pack counts. A **Live / Offline** chip in the header is set from `GET /health` once at load. If the API is down the map says so and falls back to frozen `data/*_live.geojson` packs — it will not quietly call a point open. No API key. CORS allows this GitHub Pages origin and localhost.
+
+Sidebar is grouped like the state viewers (Find, Titles, Geology, Commodities, More). Find company names (BHP, Rio, `?company=`, `?vs=`) against the full national register, not only the static pack. Title-number search can also use `/v1/titles?q=`. Empty popup fields and a few missing layers are clearly marked **DEMO**, not real. Features with `commercial_use=false` (WA MINEDEX / BY-NC) say so on the card.
 
 ## Geology
 
@@ -77,10 +79,20 @@ Same hex size (`data/geochem_hex.geojson`, 2,569 cells) with the same style of r
 Five map-side tools. Harvest report catalogues stay out of this repo; only a slim join index and title-centroid overlay are shipped.
 
 1. **Hex click-through** — hole/geochem identify cards add report links (title, year, official portal URL). Hole IDs stay as text unless a real portal URL exists (none do for the sample IDs). Joins use tenement IDs extracted from report metadata against live titles already on the map, plus distinctive company tokens vs hex operators / title holders. DEMO cells get no links.
-2. **Box pack** — Box pack button or shift-drag a rectangle. A pack lists live titles, occurrences, hole/geochem hexes, and joined reports in the box (capped with “Showing N of M”). No backend.
+2. **Box pack** — Box pack button or shift-drag a rectangle. Prefers `/v1/aoi` for title/occurrence/hole counts (hole features are a 25-collar sample, not millions of points). Static hex/report layers remain until those are tiled. Open-ground in the pack is a point sample via `/v1/open-ground`.
 3. **My ground** — pin a company and/or title numbers (optional name). Persists in `localStorage`. Share `?company=BHP` or `?vs=BHP,RIO`. No accounts, no PAT.
 4. **Reports layer** — off by default. Clustered points at **title centroids after a tenement join**. Catalogues with no geometry and no join are not scattered. SA reports are empty (SARIG CSW WAF 403).
 5. **Company vs company** — `?vs=BHP,RIO` colours two holder sets and leaves identify working. Token match so `RIO` is Rio Tinto, not Marion.
-6. **Open ground** — land not under a live title in the state registers. Find has an Open ground control (`?open=1` or `?open=lng,lat`). Click a point for **Open ground** or **Held** plus covering live titles (name, holder, tenure, state). Box pack adds a point-sample vacant vs held count — not a vacant cadastral polygon. This is not a grant, and not parks / native title / planning / pastoral / city lots. ACT has no titles register. Every live title in the official feeds is already held; there is no for-sale list.
+6. **Open ground** — `GET /v1/open-ground` (fallback: client-side live-title index). Find has an Open ground control (`?open=1` or `?open=lng,lat`). Click a point for **Open ground** or **Held** plus covering live titles. Box pack adds a point-sample vacant vs held count — not a vacant cadastral polygon. This is not a grant, and not parks / native title / planning / pastoral / city lots. ACT has no titles register. There is no for-sale list.
+
+Viewport titles load on `moveend` from `/v1/titles?bbox=` (zoom-gated; the continent is not requested at `limit=2000`). Map click identify uses `/v1/identify` unless a geology or hex layer is hit first.
+
+## Live API check
+
+```bash
+python3 tools/test_live_api.py
+```
+
+Asserts health, AL7 held (Zeolite Australia), Sydney open, and Find BHP against the register. Serve this folder (`python3 -m http.server 8765`) to click the same points in the map.
 
 Report URLs are taken from the harvest (DIGS / GEMIS / MRT / GSV / WAMEX portal home + A-number) or the official GSQ CKAN dataset page built from the harvested package id. PDFs are not downloaded.
