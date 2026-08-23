@@ -5,12 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Xplorr</title>
   <link rel="stylesheet" href="vendor/maplibre-gl.css" />
-  <link rel="stylesheet" href="app.css?v=20260820h" />
+  <link rel="stylesheet" href="app.css?v=20260823a" />
 </head>
 <body>
   <aside id="panel">
     <header>
-      <h1>Xplorr</h1>
+      <h1>Xplorr <span id="api-chip" class="api-chip">Checking register…</span></h1>
       <p class="sub">Australian mining &amp; exploration</p>
     </header>
     <div class="demo-banner">Preview fill: empty fields and a few missing layers are DEMO, not real.</div>
@@ -20,7 +20,7 @@
       <input type="search" id="find" placeholder="Title number, company, occurrence…" autocomplete="off" />
       <div class="openground">
         <button type="button" id="open-ground" aria-pressed="false">Open ground</button>
-        <p class="note">Click the map for <strong>Open ground</strong> (no live title covers that point) or <strong>Held</strong> plus the covering live titles. This only means no live title in our state registers — not a grant, and not parks, native title, planning, pastoral or city lots. ACT has no titles register. Share with ?open=1.</p>
+        <p class="note">Click the map for <strong>Open ground</strong> (no live title covers that point) or <strong>Held</strong> plus the covering live titles. Uses the live national register when the chip is green; if the API is down the map says so and falls back to loaded title packs — it will not quietly call a point open. This only means no live title in our state registers — not a grant, and not parks, native title, planning, pastoral or city lots. ACT has no titles register. Share with ?open=1.</p>
       </div>
       <div id="find-results" hidden></div>
       <p class="note">Click a result or the map. Compare with vs=BHP,RIO in the URL.</p>
@@ -127,6 +127,6 @@
   </aside>
   <div id="popup" class="hidden"></div>
   <script src="vendor/maplibre-gl.js"></script>
-  <script src="app.js?v=20260820h"></script>
+  <script src="app.js?v=20260823a"></script>
 </body>
 </html>
