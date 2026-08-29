@@ -508,6 +508,7 @@
 
   const baseStyle = {
     version: 8,
+    glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
     sources: {},
     layers: [
       {
@@ -2300,9 +2301,9 @@
             type: "raster",
             source: "osm",
             paint: {
-              "raster-opacity": 0.28,
-              "raster-saturation": -0.75,
-              "raster-brightness-max": 0.42
+              "raster-opacity": 0.38,
+              "raster-saturation": -0.55,
+              "raster-brightness-max": 0.58
             }
           },
           map.getLayer("au-states") ? "au-states" : (map.getLayer("au-coast") ? "au-coast" : undefined)

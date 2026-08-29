@@ -227,12 +227,12 @@ footer { margin-top: 12px; font-size: 0.68rem; color: #888; line-height: 1.4; }
 .legend-row.vs-b .swatch { background: #ff2bd6; }
 
 .maplibregl-popup-content {
-  background: #000;
+  background: #000 !important;
   color: #fff;
   border: 1px solid #222;
   border-radius: 0;
   padding: 10px 12px;
-  box-shadow: none;
+  box-shadow: none !important;
   max-width: 360px;
 }
 .maplibregl-popup-tip { border-top-color: #222 !important; }
