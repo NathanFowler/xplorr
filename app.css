@@ -94,6 +94,20 @@ h3 {
 }
 .row:hover { background: #111; }
 .row input { accent-color: #aaa; margin: 0; }
+.row.busy::after {
+  content: "";
+  width: 10px;
+  height: 10px;
+  margin-left: auto;
+  flex: 0 0 auto;
+  border: 1.5px solid #333;
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: layer-spin 0.7s linear infinite;
+}
+@keyframes layer-spin {
+  to { transform: rotate(360deg); }
+}
 .swatch {
   width: 10px;
   height: 10px;
@@ -297,6 +311,32 @@ footer { margin-top: 12px; font-size: 0.68rem; color: #888; line-height: 1.4; }
   pointer-events: none;
   z-index: 4;
 }
+.map-busy {
+  position: absolute;
+  left: 252px;
+  top: 12px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: #000;
+  border: 1px solid #222;
+  color: #aaa;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  padding: 5px 8px;
+  pointer-events: none;
+}
+.map-busy[hidden] { display: none; }
+.map-busy .spin {
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid #333;
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: layer-spin 0.7s linear infinite;
+  flex: 0 0 auto;
+}
 .occ-legend {
   position: absolute;
   left: 252px;
@@ -375,6 +415,7 @@ footer { margin-top: 12px; font-size: 0.68rem; color: #888; line-height: 1.4; }
 
 @media (max-width: 720px) {
   .occ-legend { left: 10px; }
+  .map-busy { left: 10px; top: 48px; }
   #map { left: 0; }
   #rail-toggle {
     display: block;

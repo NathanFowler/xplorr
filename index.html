@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Xplorr</title>
   <link rel="stylesheet" href="vendor/maplibre-gl.css" />
-  <link rel="stylesheet" href="app.css?v=20260829e" />
+  <link rel="stylesheet" href="app.css?v=20260829f" />
 </head>
 <body>
   <button type="button" id="rail-toggle" aria-expanded="false" aria-controls="panel">Layers</button>
@@ -117,6 +117,10 @@
     </div>
   </aside>
   <div id="map"></div>
+  <div id="map-busy" class="map-busy" hidden role="status" aria-live="polite">
+    <span class="spin" aria-hidden="true"></span>
+    <span id="map-busy-text">Updating map…</span>
+  </div>
   <div id="occ-legend" class="occ-legend" hidden></div>
   <div id="draw-box" hidden></div>
   <aside id="pack" hidden>
@@ -128,6 +132,6 @@
   </aside>
   <div id="popup" class="hidden"></div>
   <script src="vendor/maplibre-gl.js"></script>
-  <script src="app.js?v=20260829e"></script>
+  <script src="app.js?v=20260829f"></script>
 </body>
 </html>

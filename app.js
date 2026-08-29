@@ -198,10 +198,13 @@
   let occPack = null;
   let occLoaded = false;
   let occLoading = false;
+  let occLoadPromise = null;
   let holesLoaded = false;
   let holesLoading = false;
   let gchemLoaded = false;
   let gchemLoading = false;
+  const hexLoadPromise = { holes: null, gchem: null };
+  let geoLoadPromise = null;
   let findQuery = "";
   const liveLoad = {};
   const liveTitleIndex = {};
@@ -634,6 +637,69 @@
   map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), "top-right");
   map.addControl(new maplibregl.ScaleControl({ unit: "metric" }));
 
+  let layerBusyGen = 0;
+
+  function showLayerBusy(msg, row) {
+    layerBusyGen += 1;
+    const gen = layerBusyGen;
+    const rows = document.querySelectorAll(".row.busy");
+    for (let i = 0; i < rows.length; i++) rows[i].classList.remove("busy");
+    if (row) row.classList.add("busy");
+    const chip = document.getElementById("map-busy");
+    const text = document.getElementById("map-busy-text");
+    if (text) text.textContent = msg || "Updating map…";
+    if (chip) chip.hidden = false;
+    return gen;
+  }
+
+  function hideLayerBusy(gen) {
+    if (gen != null && gen !== layerBusyGen) return;
+    const rows = document.querySelectorAll(".row.busy");
+    for (let i = 0; i < rows.length; i++) rows[i].classList.remove("busy");
+    const chip = document.getElementById("map-busy");
+    if (chip) chip.hidden = true;
+  }
+
+  function nextPaint() {
+    return new Promise(function (resolve) {
+      requestAnimationFrame(function () {
+        requestAnimationFrame(resolve);
+      });
+    });
+  }
+
+  function waitMapIdle(gen) {
+    const finish = function () { hideLayerBusy(gen); };
+    if (!map || typeof map.once !== "function") {
+      finish();
+      return;
+    }
+    let settled = false;
+    const once = function () {
+      if (settled) return;
+      settled = true;
+      finish();
+    };
+    try {
+      map.once("idle", once);
+    } catch (err) {
+      once();
+      return;
+    }
+    setTimeout(once, 5000);
+  }
+
+  function withLayerBusy(msg, row, work) {
+    const gen = showLayerBusy(msg, row);
+    return nextPaint()
+      .then(function () { return work(); })
+      .then(function () { waitMapIdle(gen); })
+      .catch(function (err) {
+        hideLayerBusy(gen);
+        throw err;
+      });
+  }
+
   const popup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: "400px" });
 
   function isBlank(v) {
@@ -1008,12 +1074,29 @@
     syncOccFromMinerals();
   }
 
-  function syncOccFromMinerals() {
+  function occBusyMessage(input) {
+    const selected = selectedMinerals();
+    if (!selected.length) return null;
+    const id = input && input.getAttribute ? input.getAttribute("data-mineral") : "";
+    if (!occLoaded) {
+      return id ? "Loading " + mineralLabel({ id: id, label: id }) + "…" : "Loading occurrences…";
+    }
+    if (input && input.checked) {
+      return id ? "Loading " + mineralLabel({ id: id, label: id }) + "…" : "Updating map…";
+    }
+    return "Updating map…";
+  }
+
+  function syncOccFromMinerals(msg, row) {
     const ids = selectedMinerals();
     if (occMaster) occMaster.checked = ids.length > 0;
     if (ids.length) {
       if (occBox) occBox.classList.remove("disabled");
-      loadOccurrences();
+      if (msg) {
+        void withLayerBusy(msg, row, function () { return loadOccurrences(); });
+      } else {
+        loadOccurrences();
+      }
       if (map.getLayer("occ-clusters")) {
         map.setPaintProperty("occ-clusters", "circle-color", occFamilyColor());
       }
@@ -1117,7 +1200,10 @@
     }
     const loaded = kind === "holes" ? holesLoaded : gchemLoaded;
     if (loaded) applyHexFilter(kind);
-    else loadHex(kind);
+    else {
+      const label = kind === "holes" ? "Loading drilling…" : "Loading samples…";
+      void withLayerBusy(label, null, function () { return loadHex(kind); });
+    }
     updateLegend();
   }
 
@@ -1127,7 +1213,7 @@
       if (occBox) occBox.classList.remove("disabled");
     }
     if (occLoaded) applyOccFilter();
-    else loadOccurrences();
+    else void withLayerBusy("Loading occurrences…", null, function () { return loadOccurrences(); });
     updateLegend();
   }
 
@@ -1196,9 +1282,15 @@
       if (liveTitlesUsingApi) scheduleLiveTitles();
       return;
     }
-    if (occMaster && occMaster.checked && !occLoaded && !occLoading) loadOccurrences();
-    if (holesMaster && holesMaster.checked && !holesLoaded && !holesLoading) loadHex("holes");
-    if (gchemMaster && gchemMaster.checked && !gchemLoaded && !gchemLoading) loadHex("gchem");
+    if (occMaster && occMaster.checked && !occLoaded && !occLoading) {
+      void withLayerBusy("Loading occurrences…", null, function () { return loadOccurrences(); });
+    }
+    if (holesMaster && holesMaster.checked && !holesLoaded && !holesLoading) {
+      void withLayerBusy("Loading drilling…", null, function () { return loadHex("holes"); });
+    }
+    if (gchemMaster && gchemMaster.checked && !gchemLoaded && !gchemLoading) {
+      void withLayerBusy("Loading samples…", null, function () { return loadHex("gchem"); });
+    }
 
     const byKind = { title: [], occ: [], holes: [], gchem: [] };
     for (let i = 0; i < findIndex.length; i++) {
@@ -1716,8 +1808,10 @@
       });
     }
     const root = occMinerals || top;
-    root.addEventListener("change", function () {
-      syncOccFromMinerals();
+    root.addEventListener("change", function (e) {
+      const input = e.target;
+      const row = input && input.closest ? input.closest(".row") : null;
+      syncOccFromMinerals(occBusyMessage(input), row);
     });
   }
 
@@ -1829,10 +1923,10 @@
       applyGeoFilter();
       return Promise.resolve();
     }
-    if (geoLoading) return Promise.resolve();
+    if (geoLoadPromise) return geoLoadPromise;
     geoLoading = true;
     log("Loading geology kinds…");
-    return fetch("data/geology_kinds.geojson")
+    geoLoadPromise = fetch("data/geology_kinds.geojson")
       .then(function (r) {
         if (!r.ok) throw new Error("geology_kinds.geojson HTTP " + r.status);
         return r.json();
@@ -1884,7 +1978,11 @@
         geoLoading = false;
         kindsMaster.checked = false;
         log("Failed geology kinds: " + err.message);
+      })
+      .then(function () {
+        geoLoadPromise = null;
       });
+    return geoLoadPromise;
   }
 
   function ensureGa(on) {
@@ -2187,10 +2285,10 @@
       applyOccFilter();
       return Promise.resolve();
     }
-    if (occLoading) return Promise.resolve();
+    if (occLoadPromise) return occLoadPromise;
     occLoading = true;
     log("Loading occurrences…");
-    return fetch(assetUrl("data/occ.json"))
+    occLoadPromise = fetch(assetUrl("data/occ.json"))
       .then(function (r) {
         if (!r.ok) throw new Error("occ.json HTTP " + r.status);
         return r.json();
@@ -2351,24 +2449,27 @@
         occLoading = false;
         occMaster.checked = false;
         log("Failed occurrences: " + err.message);
+      })
+      .then(function () {
+        occLoadPromise = null;
       });
+    return occLoadPromise;
   }
 
   function loadHex(kind) {
     const loaded = kind === "holes" ? holesLoaded : gchemLoaded;
-    const loading = kind === "holes" ? holesLoading : gchemLoading;
     if (loaded) {
       applyHexFilter(kind);
       return Promise.resolve();
     }
-    if (loading) return Promise.resolve();
+    if (hexLoadPromise[kind]) return hexLoadPromise[kind];
     if (kind === "holes") holesLoading = true;
     else gchemLoading = true;
     const file = kind === "holes" ? "data/holes_hex.geojson" : "data/geochem_hex.geojson";
     const sid = kind === "holes" ? "holes-hex" : "gchem-hex";
     const lid = sid;
     log("Loading " + kind + " density…");
-    return fetch(file)
+    hexLoadPromise[kind] = fetch(file)
       .then(function (r) {
         if (!r.ok) throw new Error(file + " HTTP " + r.status);
         return r.json();
@@ -2420,7 +2521,11 @@
           gchemMaster.checked = false;
         }
         log("Failed " + kind + ": " + err.message);
+      })
+      .then(function () {
+        hexLoadPromise[kind] = null;
       });
+    return hexLoadPromise[kind];
   }
 
   function onToggle(ev) {
@@ -2460,19 +2565,23 @@
     }
   }
 
-  deadMaster.addEventListener("change", function () {
+  deadMaster.addEventListener("change", function (e) {
+    const row = e.target && e.target.closest ? e.target.closest(".row") : null;
     if (deadMaster.checked) {
       deadBox.classList.remove("disabled");
-      STATES.forEach(function (s) {
-        const inp = deadBox.querySelector('input[data-state="' + s.id + '"][data-life="dead"]');
-        if (!inp || inp.disabled) return;
-        inp.checked = true;
-        addStateLayers(s.id, "dead", TITLE_DEAD_COLOR).then(function (ok) {
-          if (ok) setVisible(s.id, "dead", true);
-        }).catch(function (err) {
-          inp.checked = false;
-          log("Failed " + s.id + " dead: " + err.message);
+      void withLayerBusy("Loading dead titles…", row, function () {
+        const jobs = STATES.map(function (s) {
+          const inp = deadBox.querySelector('input[data-state="' + s.id + '"][data-life="dead"]');
+          if (!inp || inp.disabled) return Promise.resolve();
+          inp.checked = true;
+          return addStateLayers(s.id, "dead", TITLE_DEAD_COLOR).then(function (ok) {
+            if (ok) setVisible(s.id, "dead", true);
+          }).catch(function (err) {
+            inp.checked = false;
+            log("Failed " + s.id + " dead: " + err.message);
+          });
         });
+        return Promise.all(jobs);
       });
     } else {
       deadBox.classList.add("disabled");
@@ -2619,10 +2728,15 @@
     updateLegend();
   });
 
-  kindsMaster.addEventListener("change", function () {
+  kindsMaster.addEventListener("change", function (e) {
+    const row = e.target && e.target.closest ? e.target.closest(".row") : null;
     if (kindsMaster.checked) {
       kindBox.classList.remove("disabled");
-      loadGeologyKinds();
+      if (!geoLoaded) {
+        void withLayerBusy("Loading geology…", row, function () { return loadGeologyKinds(); });
+      } else {
+        loadGeologyKinds();
+      }
       if (geoSearch) geoSearch.hidden = false;
     } else {
       kindBox.classList.add("disabled");
@@ -2638,8 +2752,10 @@
       kindBox.classList.remove("disabled");
       if (geoSearch) geoSearch.hidden = false;
     }
-    if (!geoLoaded) loadGeologyKinds();
-    else applyGeoFilter();
+    if (!geoLoaded) {
+      const row = kindsMaster && kindsMaster.closest ? kindsMaster.closest(".row") : null;
+      void withLayerBusy("Loading geology…", row, function () { return loadGeologyKinds(); });
+    } else applyGeoFilter();
   });
 
   kindsAll.addEventListener("click", function () {
@@ -2657,7 +2773,7 @@
 
   minsAll.addEventListener("click", function () {
     mineralInputs().forEach(function (inp) { inp.checked = true; });
-    syncOccFromMinerals();
+    syncOccFromMinerals(occLoaded ? "Updating map…" : "Loading occurrences…", null);
   });
   minsNone.addEventListener("click", function () {
     mineralInputs().forEach(function (inp) { inp.checked = false; });
@@ -2667,7 +2783,7 @@
   occMaster.addEventListener("change", function () {
     if (occMaster.checked) {
       occBox.classList.remove("disabled");
-      loadOccurrences();
+      void withLayerBusy("Loading occurrences…", null, function () { return loadOccurrences(); });
     } else {
       occBox.classList.add("disabled");
       applyOccFilter();
@@ -2675,11 +2791,16 @@
     updateLegend();
     updateDemoBanner();
   });
-  holesMaster.addEventListener("change", function () {
+  holesMaster.addEventListener("change", function (e) {
+    const row = e.target && e.target.closest ? e.target.closest(".row") : null;
     if (holesMaster.checked) {
       holesBox.classList.remove("disabled");
       if (holesLegend) holesLegend.hidden = false;
-      loadHex("holes");
+      if (!holesLoaded) {
+        void withLayerBusy("Loading drilling…", row, function () { return loadHex("holes"); });
+      } else {
+        loadHex("holes");
+      }
     } else {
       holesBox.classList.add("disabled");
       if (holesLegend) holesLegend.hidden = true;
@@ -2688,11 +2809,16 @@
     updateLegend();
     updateDemoBanner();
   });
-  gchemMaster.addEventListener("change", function () {
+  gchemMaster.addEventListener("change", function (e) {
+    const row = e.target && e.target.closest ? e.target.closest(".row") : null;
     if (gchemMaster.checked) {
       gchemBox.classList.remove("disabled");
       if (gchemLegend) gchemLegend.hidden = false;
-      loadHex("gchem");
+      if (!gchemLoaded) {
+        void withLayerBusy("Loading samples…", row, function () { return loadHex("gchem"); });
+      } else {
+        loadHex("gchem");
+      }
     } else {
       gchemBox.classList.add("disabled");
       if (gchemLegend) gchemLegend.hidden = true;
@@ -2702,7 +2828,7 @@
   });
 
 
-  const ASSET_V = "20260829e";
+  const ASSET_V = "20260829f";
   const VS_A_COLOR = "#00c8ff";
   const VS_B_COLOR = "#ff2bd6";
   const GROUND_KEY = "xplorr.myground";
@@ -2727,6 +2853,7 @@
   let reportsLoading = false;
   let reportsLoaded = false;
   let reportsPtsLoaded = false;
+  let reportsLoadPromise = null;
   let lastTitle = null;
   let ground = { name: "", company: "", titles: [] };
   let vsPair = null;
@@ -4090,9 +4217,15 @@
     if (!packEl || !packBody) return;
     packEl.hidden = false;
     packBody.innerHTML = "<p class='note'>Collecting features in the box…</p>";
-    if (occMaster && occMaster.checked && !occLoaded && !occLoading) loadOccurrences();
-    if (holesMaster && holesMaster.checked && !holesLoaded && !holesLoading) loadHex("holes");
-    if (gchemMaster && gchemMaster.checked && !gchemLoaded && !gchemLoading) loadHex("gchem");
+    if (occMaster && occMaster.checked && !occLoaded && !occLoading) {
+      void withLayerBusy("Loading occurrences…", null, function () { return loadOccurrences(); });
+    }
+    if (holesMaster && holesMaster.checked && !holesLoaded && !holesLoading) {
+      void withLayerBusy("Loading drilling…", null, function () { return loadHex("holes"); });
+    }
+    if (gchemMaster && gchemMaster.checked && !gchemLoaded && !gchemLoading) {
+      void withLayerBusy("Loading samples…", null, function () { return loadHex("gchem"); });
+    }
     const boxStates = statesForBounds(bounds);
     const aoiJob = apiStatus.live
       ? fetchApi("/v1/aoi", { bbox: bboxParam(bounds) }, 25000).catch(function (err) {
@@ -4417,7 +4550,8 @@
       });
       return Promise.resolve();
     }
-    return fetch(assetUrl("data/reports_pts.geojson"))
+    if (reportsLoadPromise) return reportsLoadPromise;
+    reportsLoadPromise = fetch(assetUrl("data/reports_pts.geojson"))
       .then(function (r) {
         if (!r.ok) throw new Error("reports_pts HTTP " + r.status);
         return r.json();
@@ -4483,15 +4617,24 @@
       .catch(function (err) {
         log("Reports layer: " + err.message);
         if (reportsMaster) reportsMaster.checked = false;
+      })
+      .then(function () {
+        reportsLoadPromise = null;
       });
+    return reportsLoadPromise;
   }
 
   if (reportsMaster) {
-    reportsMaster.addEventListener("change", function () {
+    reportsMaster.addEventListener("change", function (e) {
+      const row = e.target && e.target.closest ? e.target.closest(".row") : null;
       if (reportsMaster.checked) {
         const more = document.getElementById("more-group");
         if (more) more.open = true;
-        loadReportsPts();
+        if (!reportsPtsLoaded) {
+          void withLayerBusy("Loading reports…", row, function () { return loadReportsPts(); });
+        } else {
+          loadReportsPts();
+        }
         ensureReports();
       } else if (reportsPtsLoaded) {
         ["rpt-clusters", "rpt-cluster-count", "rpt-point"].forEach(function (id) {
@@ -4711,7 +4854,7 @@
         buildStateMini(gchemBox, "gchem", overlayCounts("gchem"));
         if (occMaster && occMaster.checked) {
           occBox.classList.remove("disabled");
-          loadOccurrences();
+          void withLayerBusy("Loading occurrences…", null, function () { return loadOccurrences(); });
         }
         updateLegend();
       })
@@ -4719,7 +4862,9 @@
         buildStateMini(occBox, "occ", {});
         buildStateMini(holesBox, "holes", {});
         buildStateMini(gchemBox, "gchem", {});
-        if (occMaster && occMaster.checked) loadOccurrences();
+        if (occMaster && occMaster.checked) {
+          void withLayerBusy("Loading occurrences…", null, function () { return loadOccurrences(); });
+        }
         updateLegend();
       });
     fetch("data/manifest.json")
