@@ -60,22 +60,22 @@
 
   // Mineral types from occ.json comm tokens (not invented). Titles have no commodity field.
   const MINERALS = [
-    { id: "gold", label: "gold", color: "#f2c14e" },
-    { id: "copper", label: "copper", color: "#e07a3d" },
-    { id: "silver", label: "silver", color: "#c9d1d9" },
-    { id: "iron", label: "iron", color: "#c44e52" },
-    { id: "lead", label: "lead", color: "#7a8490" },
-    { id: "zinc", label: "zinc", color: "#5dade2" },
-    { id: "tin", label: "tin", color: "#8fa38a" },
-    { id: "nickel", label: "nickel", color: "#2a9d8f" },
-    { id: "coal", label: "coal", color: "#5c5346" },
-    { id: "lithium", label: "lithium", color: "#9b5de5" },
-    { id: "uranium", label: "uranium", color: "#8bc34a" },
-    { id: "manganese", label: "manganese", color: "#c47ac0" },
-    { id: "tungsten", label: "tungsten", color: "#5c6bc0" },
-    { id: "diamond", label: "diamond", color: "#80deea" },
-    { id: "construction", label: "construction", color: "#d4b483" },
-    { id: "other", label: "other", color: "#9aa0a6" }
+    { id: "gold", label: "gold", color: "#ffd000" },
+    { id: "copper", label: "copper", color: "#ff7a1a" },
+    { id: "silver", label: "silver", color: "#00e5ff" },
+    { id: "iron", label: "iron", color: "#ff2d2d" },
+    { id: "lead", label: "lead", color: "#ff2bd6" },
+    { id: "zinc", label: "zinc", color: "#3d9cff" },
+    { id: "tin", label: "tin", color: "#ffb020" },
+    { id: "nickel", label: "nickel", color: "#00e0b8" },
+    { id: "coal", label: "coal", color: "#7b5cff" },
+    { id: "lithium", label: "lithium", color: "#b44dff" },
+    { id: "uranium", label: "uranium", color: "#b8ff00" },
+    { id: "manganese", label: "manganese", color: "#ff6ec7" },
+    { id: "tungsten", label: "tungsten", color: "#4d7cff" },
+    { id: "diamond", label: "diamond", color: "#7affd6" },
+    { id: "construction", label: "construction", color: "#ffc46b" },
+    { id: "other", label: "other", color: "#ff3d8a" }
   ];
 
   // Verified from data/occ.json comm tokens via MINERAL_EXACT / phrases (2026-08-20 pack).
@@ -490,7 +490,7 @@
     for (let i = 0; i < MINERALS.length; i++) {
       if (MINERALS[i].id === id) return MINERALS[i].color;
     }
-    return "#9aa0a6";
+    return "#ff3d8a";
   }
 
   function occFamilyColor() {
@@ -503,7 +503,7 @@
     MINERALS.forEach(function (m) {
       expr.push(m.id, m.color);
     });
-    expr.push("#9aa0a6");
+    expr.push("#ff3d8a");
     return expr;
   }
 
@@ -517,19 +517,28 @@
     return types[0] || "other";
   }
 
-  function heatRgb(hex) {
-    const h = String(hex || "#999999").replace("#", "");
-    let r = parseInt(h.slice(0, 2), 16) || 0;
-    let g = parseInt(h.slice(2, 4), 16) || 0;
-    let b = parseInt(h.slice(4, 6), 16) || 0;
-    const mx = Math.max(r, g, b);
-    if (mx < 140) {
-      const s = 140 / (mx || 1);
-      r = Math.min(255, Math.round(r * s));
-      g = Math.min(255, Math.round(g * s));
-      b = Math.min(255, Math.round(b * s));
-    }
-    return r + "," + g + "," + b;
+  function hexToRgb(hex) {
+    const h = String(hex || "#ff3d8a").replace("#", "");
+    return {
+      r: parseInt(h.slice(0, 2), 16) || 0,
+      g: parseInt(h.slice(2, 4), 16) || 0,
+      b: parseInt(h.slice(4, 6), 16) || 0
+    };
+  }
+
+  function rgbStr(c) {
+    return c.r + "," + c.g + "," + c.b;
+  }
+
+  function hotterRgb(hex) {
+    const c = hexToRgb(hex);
+    const mx = Math.max(c.r, c.g, c.b, 1);
+    const boost = 255 / mx;
+    return {
+      r: Math.min(255, Math.round(c.r * boost * 0.92 + 20)),
+      g: Math.min(255, Math.round(c.g * boost * 0.92 + 20)),
+      b: Math.min(255, Math.round(c.b * boost * 0.92 + 20))
+    };
   }
 
   function occLayerIds() {
@@ -537,6 +546,7 @@
       "occ-clusters",
       "occ-cluster-count",
       "occ-point",
+      "occ-dots",
       "occ-sec-point"
     ]);
   }
@@ -1401,17 +1411,19 @@
   }
 
   function updateLegend() {
-    if (!legendLive) return;
-    const rows = [];
-    if (vsPair && vsPair[0] && vsPair[1]) {
-      rows.push(
-        '<div class="legend-row vs-a"><span class="swatch"></span><span>' + escapeHtml(vsPair[0]) + '</span></div>' +
-        '<div class="legend-row vs-b"><span class="swatch"></span><span>' + escapeHtml(vsPair[1]) + '</span></div>'
-      );
-    } else if (liveTitlesUsingApi && lastLiveTitlesTruncated) {
-      rows.push('<div class="legend-row"><span class="swatch" style="background:' + TITLE_LIVE_COLOR + '"></span><span>Live titles · viewport capped</span></div>');
+    if (legendLive) {
+      const rows = [];
+      if (vsPair && vsPair[0] && vsPair[1]) {
+        rows.push(
+          '<div class="legend-row vs-a"><span class="swatch"></span><span>' + escapeHtml(vsPair[0]) + '</span></div>' +
+          '<div class="legend-row vs-b"><span class="swatch"></span><span>' + escapeHtml(vsPair[1]) + '</span></div>'
+        );
+      } else if (liveTitlesUsingApi && lastLiveTitlesTruncated) {
+        rows.push('<div class="legend-row"><span class="swatch" style="background:' + TITLE_LIVE_COLOR + '"></span><span>Live titles · viewport capped</span></div>');
+      }
+      legendLive.innerHTML = rows.join("");
     }
-    legendLive.innerHTML = rows.join("");
+    updateOccLegend();
   }
 
 
@@ -2092,43 +2104,82 @@
 
   const OCC_LAYERS = occLayerIds();
 
-  function occHeatPaint(rgb, peak) {
+  function occHeatPaint(hex) {
+    const base = rgbStr(hexToRgb(hex));
+    const peak = rgbStr(hotterRgb(hex));
     return {
       "heatmap-weight": 1,
-      "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 3, 0.35, 7, 1.15],
+      "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 3, 0.4, 7, 1.05],
       "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 3, 14, 7, 22],
       "heatmap-opacity": [
         "interpolate", ["linear"], ["zoom"],
-        3, 0.88,
-        7, 0.72,
+        3, 0.9,
+        7, 0.75,
         OCC_HEAT_MAX_ZOOM, 0
       ],
       "heatmap-color": [
         "interpolate", ["linear"], ["heatmap-density"],
-        0, "rgba(" + rgb + ",0)",
-        0.12, "rgba(" + rgb + ",0.18)",
-        0.35, "rgba(" + rgb + ",0.45)",
-        0.6, "rgba(" + rgb + ",0.7)",
-        1, "rgba(" + (peak || "255,255,220") + ",0.92)"
+        0, "rgba(" + base + ",0)",
+        0.18, "rgba(" + base + ",0.4)",
+        0.45, "rgba(" + base + ",0.75)",
+        0.75, "rgba(" + peak + ",0.9)",
+        1, "rgba(" + peak + ",1)"
       ]
     };
   }
 
   function applyOccFilter() {
-    if (!occPack || !map.getSource("occ")) return;
-    if (!occMaster.checked) {
-      OCC_LAYERS.forEach(function (id) {
-        if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "none");
-      });
+    if (!occPack || !map.getSource("occ")) {
+      updateOccLegend();
+      return;
+    }
+    const selected = selectedMinerals();
+    const on = !!(occMaster && occMaster.checked && selected.length);
+    if (!on) {
+      OCC_LAYERS.forEach(function (id) { setLayerVisible(id, false); });
+      updateOccLegend();
       return;
     }
     const gj = occToGJ(occPack, selectedOverlayStates(occBox));
     map.getSource("occ").setData(gj.pri);
     if (map.getSource(OCC_HEAT_SRC)) map.getSource(OCC_HEAT_SRC).setData(gj.pri);
     if (map.getSource("occ-sec")) map.getSource("occ-sec").setData(gj.sec);
-    OCC_LAYERS.forEach(function (id) {
-      if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "visible");
+    const allow = {};
+    selected.forEach(function (id) { allow[id] = true; });
+    MINERALS.forEach(function (m) {
+      setLayerVisible("occ-heat-" + m.id, !!allow[m.id]);
     });
+    const mixed = selected.length > 1;
+    setLayerVisible("occ-clusters", !mixed);
+    setLayerVisible("occ-cluster-count", !mixed);
+    setLayerVisible("occ-point", !mixed);
+    setLayerVisible("occ-dots", mixed);
+    setLayerVisible("occ-sec-point", true);
+    if (!mixed && map.getLayer("occ-clusters")) {
+      map.setPaintProperty("occ-clusters", "circle-color", mineralColor(selected[0]));
+    }
+    updateOccLegend();
+  }
+
+  function updateOccLegend() {
+    const el = document.getElementById("occ-legend");
+    if (!el) return;
+    const ids = selectedMinerals();
+    if (ids.length < 2 || !(occMaster && occMaster.checked)) {
+      el.hidden = true;
+      el.innerHTML = "";
+      return;
+    }
+    el.hidden = false;
+    el.innerHTML = ids.map(function (id) {
+      return (
+        '<div class="legend-row"><span class="swatch round" style="background:' +
+        mineralColor(id) +
+        '"></span><span>' +
+        mineralLabel({ id: id, label: id }) +
+        "</span></div>"
+      );
+    }).join("");
   }
 
   function loadOccurrences() {
@@ -2169,14 +2220,13 @@
             data: gj.sec
           });
           MINERALS.forEach(function (m) {
-            const rgb = heatRgb(m.color);
             map.addLayer({
               id: "occ-heat-" + m.id,
               type: "heatmap",
               source: OCC_HEAT_SRC,
               maxzoom: OCC_HEAT_MAX_ZOOM,
               filter: ["==", ["get", "min"], m.id],
-              paint: occHeatPaint(rgb, rgb)
+              paint: occHeatPaint(m.color)
             });
           });
           map.addLayer({
@@ -2204,6 +2254,20 @@
               "text-size": 11
             },
             paint: { "text-color": "#000000" }
+          });
+          map.addLayer({
+            id: "occ-dots",
+            type: "circle",
+            source: OCC_HEAT_SRC,
+            minzoom: OCC_CLUSTER_MIN_ZOOM,
+            layout: { visibility: "none" },
+            paint: {
+              "circle-color": mineralColorExpr(),
+              "circle-radius": 4.6,
+              "circle-opacity": 0.92,
+              "circle-stroke-width": 0.8,
+              "circle-stroke-color": "#000000"
+            }
           });
           map.addLayer({
             id: "occ-point",
@@ -2237,6 +2301,18 @@
           });
           map.on("mouseleave", "occ-point", function () {
             map.getCanvas().style.cursor = "";
+          });
+          map.on("mouseenter", "occ-dots", function () {
+            map.getCanvas().style.cursor = "pointer";
+          });
+          map.on("mouseleave", "occ-dots", function () {
+            map.getCanvas().style.cursor = "";
+          });
+          map.on("click", "occ-dots", function (e) {
+            const f = (e.features || [])[0];
+            if (!f) return;
+            skipNextClick = true;
+            showOccIdentify(e.lngLat, f.properties || {});
           });
           map.on("mouseenter", "occ-sec-point", function () {
             map.getCanvas().style.cursor = "pointer";
@@ -2626,7 +2702,7 @@
   });
 
 
-  const ASSET_V = "20260829d";
+  const ASSET_V = "20260829e";
   const VS_A_COLOR = "#00c8ff";
   const VS_B_COLOR = "#ff2bd6";
   const GROUND_KEY = "xplorr.myground";
@@ -4559,6 +4635,13 @@
       if (cls.length) {
         const f = cls[0];
         showOccCluster(e.lngLat, f.properties.cluster_id, f.geometry.coordinates);
+        return;
+      }
+    }
+    if (occMaster && occMaster.checked && map.getLayer("occ-dots")) {
+      const dots = map.queryRenderedFeatures(e.point, { layers: ["occ-dots"] });
+      if (dots.length) {
+        showOccIdentify(e.lngLat, dots[0].properties || {});
         return;
       }
     }

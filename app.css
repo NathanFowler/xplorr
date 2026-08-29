@@ -297,6 +297,20 @@ footer { margin-top: 12px; font-size: 0.68rem; color: #888; line-height: 1.4; }
   pointer-events: none;
   z-index: 4;
 }
+.occ-legend {
+  position: absolute;
+  left: 252px;
+  bottom: 36px;
+  z-index: 3;
+  background: #000;
+  border: 1px solid #222;
+  padding: 6px 8px;
+  min-width: 88px;
+  pointer-events: none;
+}
+.occ-legend[hidden] { display: none; }
+.occ-legend .legend-row { color: #fff; font-size: 0.72rem; margin: 2px 0; }
+
 #pack {
   position: absolute;
   top: 0;
@@ -360,6 +374,7 @@ footer { margin-top: 12px; font-size: 0.68rem; color: #888; line-height: 1.4; }
 }
 
 @media (max-width: 720px) {
+  .occ-legend { left: 10px; }
   #map { left: 0; }
   #rail-toggle {
     display: block;
