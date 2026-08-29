@@ -28,15 +28,15 @@ Geology draws under titles so title clicks stay first.
 
 ## Mineral type
 
-Sidebar filter matching the geology-kinds UI (All / None, two-column checkboxes, color swatches). Built from the existing occurrence `comm` field — types were not invented.
+Rail checkboxes from the existing occurrence `comm` field — types were not invented. Sorted by real `occ.json` counts. The six most common sit in the rail (Gold, Other, Construction, Silver, Copper, Tin); the rest are behind **See more**.
 
 Filter list (16): gold, copper, silver, iron, lead, zinc, tin, nickel, coal, lithium, uranium, manganese, tungsten, diamond, construction (sand / gravel / aggregate), other (rare, unknown, industrial).
 
-Applies to **occurrences only**. The rail exposes **Gold** and **Other**; ticking either turns occurrences on and loads them. Title polygons have no commodity field. Multi-commodity points stay visible if any selected type matches. Occurrences start off. Named and sized sites show first; unnamed historic workings appear when you zoom in.
+Applies to **occurrences only**. Ticking a commodity turns occurrences on and loads them. Title polygons have no commodity field. Multi-commodity points stay visible if any selected type matches. All commodities start off. Named and sized sites show first; unnamed historic workings appear when you zoom in.
 
 ## Occurrences
 
-Mineral occurrences / mines (`data/occ.json`, occ-v2 slim pack). Off until Gold or Other is ticked. At continent / wide zoom they draw as a MapLibre heatmap (gold or magenta glow — density, not count badges). Clusters and named sites appear from about zoom 7.5; unnamed historic workings from zoom 11. **WA MINEDEX is CC BY-NC 4.0.**
+Mineral occurrences / mines (`data/occ.json`, occ-v2 slim pack). Off until a commodity is ticked. At continent / wide zoom they draw as a MapLibre heatmap in that commodity’s colour (density, not count badges). Clusters and named sites appear from about zoom 7.5; unnamed historic workings from zoom 11. **WA MINEDEX is CC BY-NC 4.0.**
 
 Commodity filters (including gold) plot **named / size MINOR+ / real production** sites first. Unnamed and UNKNOWN historic workings stay off until zoom 11 and draw smaller. Cluster click opens a short named-site list; a row opens the full card. Zoom-in remains a secondary control.
 

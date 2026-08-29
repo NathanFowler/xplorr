@@ -187,6 +187,23 @@ footer { margin-top: 12px; font-size: 0.68rem; color: #888; line-height: 1.4; }
 .tools button:hover,
 .popup-pin:hover { background: #111; }
 
+#mineral-more-btn {
+  display: block;
+  width: 100%;
+  margin: 4px 0 0;
+  padding: 3px 2px;
+  background: transparent;
+  color: #888;
+  border: 0;
+  font: inherit;
+  font-size: 0.68rem;
+  text-align: left;
+  cursor: pointer;
+}
+#mineral-more-btn:hover { color: #fff; }
+#mineral-more-btn[hidden] { display: none; }
+#mineral-more[hidden] { display: none; }
+
 .tools {
   display: grid;
   grid-template-columns: 1fr 1fr;

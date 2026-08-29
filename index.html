@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Xplorr</title>
   <link rel="stylesheet" href="vendor/maplibre-gl.css" />
-  <link rel="stylesheet" href="app.css?v=20260829c" />
+  <link rel="stylesheet" href="app.css?v=20260829d" />
 </head>
 <body>
   <button type="button" id="rail-toggle" aria-expanded="false" aria-controls="panel">Layers</button>
@@ -29,10 +29,13 @@
         <label class="row" data-keys="live titles tenement register"><input type="checkbox" id="live-master" checked /><span class="swatch" style="background:#00c8ff"></span><span>Live titles</span></label>
         <label class="row" data-keys="dead historic titles expired"><input type="checkbox" id="dead-master" /><span class="swatch" style="background:#666"></span><span>Dead / historic</span></label>
       </section>
-      <section class="lg" data-keys="occurrences minerals mines gold">
+      <section class="lg" data-keys="occurrences minerals mines gold copper silver iron lead zinc tin nickel coal lithium uranium manganese tungsten diamond construction">
         <h2>Occurrences</h2>
-        <label class="row" data-keys="gold occurrences mines au"><input type="checkbox" id="occ-gold" /><span class="swatch round" style="background:#ffd000"></span><span>Gold</span></label>
-        <label class="row" data-keys="other occurrences minerals copper mines"><input type="checkbox" id="occ-other" /><span class="swatch round" style="background:#ff2bd6"></span><span>Other</span></label>
+        <div id="occ-minerals">
+          <div id="mineral-rail"></div>
+          <div id="mineral-more" hidden></div>
+          <button type="button" id="mineral-more-btn" hidden>See more</button>
+        </div>
       </section>
       <section class="lg" data-keys="drilling holes collars">
         <h2>Drilling</h2>
@@ -124,6 +127,6 @@
   </aside>
   <div id="popup" class="hidden"></div>
   <script src="vendor/maplibre-gl.js"></script>
-  <script src="app.js?v=20260829c"></script>
+  <script src="app.js?v=20260829d"></script>
 </body>
 </html>

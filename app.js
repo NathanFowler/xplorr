@@ -33,8 +33,6 @@
   const COMPANY_LINE = "company-api-line";
   const TITLE_LIVE_COLOR = "#00c8ff";
   const TITLE_DEAD_COLOR = "#666666";
-  const OCC_GOLD_COLOR = "#ffd000";
-  const OCC_OTHER_COLOR = "#ff2bd6";
   const OCC_HEAT_SRC = "occ-heat";
   const OCC_HEAT_MAX_ZOOM = 8;
   const OCC_CLUSTER_MIN_ZOOM = 7.5;
@@ -79,6 +77,27 @@
     { id: "construction", label: "construction", color: "#d4b483" },
     { id: "other", label: "other", color: "#9aa0a6" }
   ];
+
+  // Verified from data/occ.json comm tokens via MINERAL_EXACT / phrases (2026-08-20 pack).
+  const MINERAL_COUNTS = {
+    gold: 60139,
+    other: 19164,
+    construction: 17497,
+    silver: 14041,
+    copper: 13009,
+    tin: 8868,
+    lead: 5441,
+    iron: 4651,
+    zinc: 3789,
+    nickel: 2353,
+    tungsten: 2316,
+    diamond: 1667,
+    manganese: 1597,
+    uranium: 1358,
+    coal: 1294,
+    lithium: 694
+  };
+  const MINERAL_RAIL_TOP = 6;
 
   const MINERAL_EXACT = {
     au: "gold", gold: "gold",
@@ -160,8 +179,10 @@
   const legendLive = document.getElementById("legend-live");
   const apiChip = document.getElementById("api-chip");
   const liveMaster = document.getElementById("live-master");
-  const occGold = document.getElementById("occ-gold");
-  const occOther = document.getElementById("occ-other");
+  const mineralRail = document.getElementById("mineral-rail");
+  const mineralMore = document.getElementById("mineral-more");
+  const mineralMoreBtn = document.getElementById("mineral-more-btn");
+  const occMinerals = document.getElementById("occ-minerals");
   const auOutline = document.getElementById("au-outline");
   const auStates = document.getElementById("au-states");
   const demoBanner = document.getElementById("demo-banner");
@@ -448,8 +469,76 @@
     if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", on ? "visible" : "none");
   }
 
+  function mineralsByCount() {
+    return MINERALS.slice().sort(function (a, b) {
+      return (MINERAL_COUNTS[b.id] || 0) - (MINERAL_COUNTS[a.id] || 0);
+    });
+  }
+
+  function mineralLabel(m) {
+    const s = m.label || m.id;
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+
+  function mineralInputs() {
+    const root = occMinerals || mineralBox;
+    if (!root) return [];
+    return Array.prototype.slice.call(root.querySelectorAll('input[data-mineral]'));
+  }
+
+  function mineralColor(id) {
+    for (let i = 0; i < MINERALS.length; i++) {
+      if (MINERALS[i].id === id) return MINERALS[i].color;
+    }
+    return "#9aa0a6";
+  }
+
   function occFamilyColor() {
-    return (occGold && occGold.checked) ? OCC_GOLD_COLOR : OCC_OTHER_COLOR;
+    const ids = selectedMinerals();
+    return mineralColor(ids[0] || "gold");
+  }
+
+  function mineralColorExpr() {
+    const expr = ["match", ["get", "min"]];
+    MINERALS.forEach(function (m) {
+      expr.push(m.id, m.color);
+    });
+    expr.push("#9aa0a6");
+    return expr;
+  }
+
+  function primaryMineral(types, selected) {
+    const allow = {};
+    (selected && selected.length ? selected : types).forEach(function (id) { allow[id] = true; });
+    const order = mineralsByCount();
+    for (let i = 0; i < order.length; i++) {
+      if (types.indexOf(order[i].id) !== -1 && allow[order[i].id]) return order[i].id;
+    }
+    return types[0] || "other";
+  }
+
+  function heatRgb(hex) {
+    const h = String(hex || "#999999").replace("#", "");
+    let r = parseInt(h.slice(0, 2), 16) || 0;
+    let g = parseInt(h.slice(2, 4), 16) || 0;
+    let b = parseInt(h.slice(4, 6), 16) || 0;
+    const mx = Math.max(r, g, b);
+    if (mx < 140) {
+      const s = 140 / (mx || 1);
+      r = Math.min(255, Math.round(r * s));
+      g = Math.min(255, Math.round(g * s));
+      b = Math.min(255, Math.round(b * s));
+    }
+    return r + "," + g + "," + b;
+  }
+
+  function occLayerIds() {
+    return MINERALS.map(function (m) { return "occ-heat-" + m.id; }).concat([
+      "occ-clusters",
+      "occ-cluster-count",
+      "occ-point",
+      "occ-sec-point"
+    ]);
   }
 
   function updateDemoBanner() {
@@ -906,22 +995,13 @@
   }
 
   function ensureOccurrencesOn() {
-    if (occGold && !occGold.checked && occOther && !occOther.checked) {
-      if (occGold) occGold.checked = true;
-    }
-    syncOccFromFamily();
+    syncOccFromMinerals();
   }
 
-  function syncOccFromFamily() {
-    const on = (occGold && occGold.checked) || (occOther && occOther.checked);
-    if (occMaster) occMaster.checked = !!on;
-    if (mineralBox) {
-      mineralBox.querySelectorAll('input[data-mineral]').forEach(function (inp) {
-        const id = inp.getAttribute("data-mineral");
-        inp.checked = id === "gold" ? !!(occGold && occGold.checked) : !!(occOther && occOther.checked);
-      });
-    }
-    if (on) {
+  function syncOccFromMinerals() {
+    const ids = selectedMinerals();
+    if (occMaster) occMaster.checked = ids.length > 0;
+    if (ids.length) {
       if (occBox) occBox.classList.remove("disabled");
       loadOccurrences();
       if (map.getLayer("occ-clusters")) {
@@ -1594,38 +1674,43 @@
   }
 
   function buildMineralToggles() {
-    MINERALS.forEach(function (m) {
+    const ordered = mineralsByCount();
+    const top = mineralRail || mineralBox;
+    const tail = mineralMore;
+    if (!top) return;
+    ordered.forEach(function (m, i) {
       const lab = document.createElement("label");
       lab.className = "row";
+      lab.setAttribute("data-keys", m.id + " " + m.label + " occurrences minerals");
       lab.innerHTML =
         '<input type="checkbox" data-mineral="' +
         m.id +
         '" />' +
-        '<span class="swatch" style="background:' +
+        '<span class="swatch round" style="background:' +
         m.color +
         '"></span>' +
         "<span>" +
-        m.label +
+        mineralLabel(m) +
         "</span>";
-      mineralBox.appendChild(lab);
+      if (i < MINERAL_RAIL_TOP || !tail) top.appendChild(lab);
+      else tail.appendChild(lab);
     });
-    mineralBox.addEventListener("change", function () {
-      ensureOccurrencesOn();
+    if (mineralMoreBtn && tail && tail.children.length) {
+      mineralMoreBtn.hidden = false;
+      mineralMoreBtn.addEventListener("click", function () {
+        const open = tail.hidden;
+        tail.hidden = !open;
+        mineralMoreBtn.textContent = open ? "Show less" : "See more";
+      });
+    }
+    const root = occMinerals || top;
+    root.addEventListener("change", function () {
+      syncOccFromMinerals();
     });
   }
 
   function selectedMinerals() {
-    const ids = [];
-    if (occGold && occGold.checked) ids.push("gold");
-    if (occOther && occOther.checked) {
-      MINERALS.forEach(function (m) {
-        if (m.id !== "gold") ids.push(m.id);
-      });
-    }
-    if (ids.length) return ids;
-    if (!mineralBox) return [];
-    return Array.prototype.slice
-      .call(mineralBox.querySelectorAll('input[type="checkbox"]'))
+    return mineralInputs()
       .filter(function (inp) { return inp.checked; })
       .map(function (inp) { return inp.getAttribute("data-mineral"); });
   }
@@ -1931,7 +2016,8 @@
       }
       const props = occProps(r);
       const types = r._mins || mineralIdsFromComm(r[4]);
-      props.fam = types.indexOf("gold") !== -1 ? "gold" : "other";
+      props.min = primaryMineral(types, selectedMinerals());
+      props.fam = props.min;
       const feat = {
         type: "Feature",
         geometry: { type: "Point", coordinates: [r[1], r[2]] },
@@ -2004,14 +2090,7 @@
     map.setFilter(layer, filter);
   }
 
-  const OCC_LAYERS = [
-    "occ-heat-gold",
-    "occ-heat-other",
-    "occ-clusters",
-    "occ-cluster-count",
-    "occ-point",
-    "occ-sec-point"
-  ];
+  const OCC_LAYERS = occLayerIds();
 
   function occHeatPaint(rgb, peak) {
     return {
@@ -2089,21 +2168,16 @@
             type: "geojson",
             data: gj.sec
           });
-          map.addLayer({
-            id: "occ-heat-gold",
-            type: "heatmap",
-            source: OCC_HEAT_SRC,
-            maxzoom: OCC_HEAT_MAX_ZOOM,
-            filter: ["==", ["get", "fam"], "gold"],
-            paint: occHeatPaint("255,208,0", "255,255,220")
-          });
-          map.addLayer({
-            id: "occ-heat-other",
-            type: "heatmap",
-            source: OCC_HEAT_SRC,
-            maxzoom: OCC_HEAT_MAX_ZOOM,
-            filter: ["==", ["get", "fam"], "other"],
-            paint: occHeatPaint("255,43,214", "255,190,240")
+          MINERALS.forEach(function (m) {
+            const rgb = heatRgb(m.color);
+            map.addLayer({
+              id: "occ-heat-" + m.id,
+              type: "heatmap",
+              source: OCC_HEAT_SRC,
+              maxzoom: OCC_HEAT_MAX_ZOOM,
+              filter: ["==", ["get", "min"], m.id],
+              paint: occHeatPaint(rgb, rgb)
+            });
           });
           map.addLayer({
             id: "occ-clusters",
@@ -2138,11 +2212,7 @@
             minzoom: OCC_CLUSTER_MIN_ZOOM,
             filter: ["!", ["has", "point_count"]],
             paint: {
-              "circle-color": [
-                "match", ["get", "fam"],
-                "gold", OCC_GOLD_COLOR,
-                OCC_OTHER_COLOR
-              ],
+              "circle-color": mineralColorExpr(),
               "circle-radius": 5.4,
               "circle-opacity": 0.92,
               "circle-stroke-width": 0.9,
@@ -2155,11 +2225,7 @@
             source: "occ-sec",
             minzoom: 11,
             paint: {
-              "circle-color": [
-                "match", ["get", "fam"],
-                "gold", OCC_GOLD_COLOR,
-                OCC_OTHER_COLOR
-              ],
+              "circle-color": mineralColorExpr(),
               "circle-radius": 2.1,
               "circle-opacity": 0.55,
               "circle-stroke-width": 0.4,
@@ -2397,13 +2463,26 @@
     document.querySelectorAll(".layers .lg").forEach(function (sec) {
       const groupKeys = sec.getAttribute("data-keys") || "";
       let any = false;
+      let moreHit = false;
       sec.querySelectorAll(".row").forEach(function (row) {
         const keys = (row.getAttribute("data-keys") || "") + " " + (row.textContent || "") + " " + groupKeys;
         const hit = layerTokenHit(keys, q);
         row.hidden = !hit;
         if (hit) any = true;
+        if (hit && mineralMore && mineralMore.contains(row)) moreHit = true;
       });
       sec.hidden = !!q && !any;
+      if (mineralMore && mineralMoreBtn && sec.contains(mineralMore)) {
+        if (q) {
+          mineralMore.hidden = !moreHit;
+          mineralMoreBtn.hidden = true;
+        } else {
+          mineralMoreBtn.hidden = !mineralMore.children.length;
+          if (!mineralMoreBtn.hidden && mineralMoreBtn.textContent === "See more") {
+            mineralMore.hidden = true;
+          }
+        }
+      }
     });
   }
 
@@ -2453,8 +2532,6 @@
       updateLegend();
     });
   }
-  if (occGold) occGold.addEventListener("change", syncOccFromFamily);
-  if (occOther) occOther.addEventListener("change", syncOccFromFamily);
   if (railToggle && panelEl) {
     railToggle.addEventListener("click", function () {
       setRailOpen(!document.body.classList.contains("rail-open"));
@@ -2503,16 +2580,12 @@
   });
 
   minsAll.addEventListener("click", function () {
-    mineralBox.querySelectorAll('input[type="checkbox"]').forEach(function (inp) {
-      inp.checked = true;
-    });
-    ensureOccurrencesOn();
+    mineralInputs().forEach(function (inp) { inp.checked = true; });
+    syncOccFromMinerals();
   });
   minsNone.addEventListener("click", function () {
-    mineralBox.querySelectorAll('input[type="checkbox"]').forEach(function (inp) {
-      inp.checked = false;
-    });
-    ensureOccurrencesOn();
+    mineralInputs().forEach(function (inp) { inp.checked = false; });
+    syncOccFromMinerals();
   });
 
   occMaster.addEventListener("change", function () {
@@ -2553,7 +2626,7 @@
   });
 
 
-  const ASSET_V = "20260829c";
+  const ASSET_V = "20260829d";
   const VS_A_COLOR = "#00c8ff";
   const VS_B_COLOR = "#ff2bd6";
   const GROUND_KEY = "xplorr.myground";
