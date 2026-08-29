@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Xplorr</title>
   <link rel="stylesheet" href="vendor/maplibre-gl.css" />
-  <link rel="stylesheet" href="app.css?v=20260829f" />
+  <link rel="stylesheet" href="app.css?v=20260829g" />
 </head>
 <body>
   <button type="button" id="rail-toggle" aria-expanded="false" aria-controls="panel">Layers</button>
@@ -28,6 +28,13 @@
         <h2>Titles</h2>
         <label class="row" data-keys="live titles tenement register"><input type="checkbox" id="live-master" checked /><span class="swatch" style="background:#00c8ff"></span><span>Live titles</span></label>
         <label class="row" data-keys="dead historic titles expired"><input type="checkbox" id="dead-master" /><span class="swatch" style="background:#666"></span><span>Dead / historic</span></label>
+      </section>
+      <section class="lg" data-keys="land tenure crown private freehold pastoral parks conservation native title aboriginal indigenous ilua forest">
+        <h2>Land</h2>
+        <div id="land-rail"></div>
+        <div id="land-more" hidden></div>
+        <button type="button" id="land-more-btn" hidden>See more</button>
+        <p class="note land-note">250&nbsp;m national tenure (ABARES 2020–21), not lot boundaries. Native title is a rights overlay (NNTT), not a title. Level&nbsp;4 Indigenous land grants are not a separate public service — click names the L4 class on this raster.</p>
       </section>
       <section class="lg" data-keys="occurrences minerals mines gold copper silver iron lead zinc tin nickel coal lithium uranium manganese tungsten diamond construction">
         <h2>Occurrences</h2>
@@ -85,7 +92,7 @@
       <label class="row"><input type="checkbox" id="ga-geol" /><span class="swatch" style="background:#8c7b6b"></span><span>GA surface geology</span></label>
       <p class="note">Click the map to identify. Compare holders with vs=BHP,RIO. Open ground is not a grant — disclaimer is on the identify card.</p>
       <footer>
-        <p>Official state titles. Geology: GA / state surveys. Occurrences: GSNSW, GSQ, GSV, MRT, NTGS, WA MINEDEX (CC BY-NC). Holes and geochem are density cells.</p>
+        <p>Official state titles. Land: ABARES / ACLUMP tenure raster and NNTT native title / ILUA (CC BY 4.0). Geology: GA / state surveys. Occurrences: GSNSW, GSQ, GSV, MRT, NTGS, WA MINEDEX (CC BY-NC). Holes and geochem are density cells.</p>
       </footer>
     </details>
 
@@ -132,6 +139,6 @@
   </aside>
   <div id="popup" class="hidden"></div>
   <script src="vendor/maplibre-gl.js"></script>
-  <script src="app.js?v=20260829f"></script>
+  <script src="app.js?v=20260829g"></script>
 </body>
 </html>

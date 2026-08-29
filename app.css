@@ -201,7 +201,7 @@ footer { margin-top: 12px; font-size: 0.68rem; color: #888; line-height: 1.4; }
 .tools button:hover,
 .popup-pin:hover { background: #111; }
 
-#mineral-more-btn {
+#mineral-more-btn, #land-more-btn {
   display: block;
   width: 100%;
   margin: 4px 0 0;
@@ -214,9 +214,10 @@ footer { margin-top: 12px; font-size: 0.68rem; color: #888; line-height: 1.4; }
   text-align: left;
   cursor: pointer;
 }
-#mineral-more-btn:hover { color: #fff; }
-#mineral-more-btn[hidden] { display: none; }
-#mineral-more[hidden] { display: none; }
+#mineral-more-btn:hover, #land-more-btn:hover { color: #fff; }
+#mineral-more-btn[hidden], #land-more-btn[hidden] { display: none; }
+#mineral-more[hidden], #land-more[hidden] { display: none; }
+.land-note { margin-top: 4px; font-size: 0.62rem; color: #888; }
 
 .tools {
   display: grid;

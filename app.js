@@ -40,6 +40,53 @@
   const REPORTS_COLOR = "#ff7a1a";
   const AU_COAST_COLOR = "#f2f2f2";
   const AU_STATE_COLOR = "#3a3a3a";
+  const ABARES_IMG =
+    "https://di-daa.img.arcgis.com/arcgis/rest/services/Land_and_vegetation/Land_Tenure_v2_250m_Level_3_2020_21/ImageServer";
+  const NNTT_WMS = "https://data.gov.au/geoserver/native-title-determination-outcomes/wms";
+  const NNTT_WFS = "https://data.gov.au/geoserver/native-title-determination-outcomes/wfs";
+  const NNTT_LAYER = "ckan_54f906a3_2c6c_4143_bcb4_27d542429939";
+  const ILUA_WMS = "https://data.gov.au/geoserver/indigenous-land-use-agreements-registered-or-in-notification/wms";
+  const ILUA_WFS = "https://data.gov.au/geoserver/indigenous-land-use-agreements-registered-or-in-notification/wfs";
+  const ILUA_LAYER = "ckan_9e837144_8070_4983_8bf0_15e7ceb56ed7";
+
+  // Pixel values from the official ABARES Level 3 ImageServer raster attribute table.
+  // L4_DESC (including Indigenous tenure variants) is on the same pixels — there is no Level 4 service.
+  const LAND_RAT = {
+    0: { l3: "No data/unresolved", l4: "No data/unresolved" },
+    1001: { l3: "Freehold", l4: "Freehold" },
+    1002: { l3: "Freehold", l4: "Freehold — Indigenous" },
+    2111: { l3: "Freeholding lease", l4: "Freeholding lease" },
+    2121: { l3: "Pastoral perpetual lease", l4: "Pastoral perpetual lease" },
+    2122: { l3: "Pastoral perpetual lease", l4: "Pastoral perpetual lease — Indigenous" },
+    2131: { l3: "Other perpetual lease", l4: "Other perpetual lease" },
+    2132: { l3: "Other perpetual lease", l4: "Other perpetual lease — Indigenous" },
+    2141: { l3: "Pastoral term lease", l4: "Pastoral term lease" },
+    2142: { l3: "Pastoral term lease", l4: "Pastoral term lease — Indigenous" },
+    2151: { l3: "Other term lease", l4: "Other term lease" },
+    2152: { l3: "Other term lease", l4: "Other term lease — Indigenous" },
+    2161: { l3: "Other lease", l4: "Other lease" },
+    2162: { l3: "Other lease", l4: "Other lease — Indigenous" },
+    2211: { l3: "Nature conservation reserve", l4: "Nature conservation reserve" },
+    2212: { l3: "Nature conservation reserve", l4: "Nature conservation reserve — Indigenous" },
+    2221: { l3: "Multiple-use public forest", l4: "Multiple-use public forest" },
+    2231: { l3: "Other Crown purposes", l4: "Other Crown purposes" },
+    2232: { l3: "Other Crown purposes", l4: "Other Crown purposes — Indigenous" },
+    2301: { l3: "Other Crown land", l4: "Other Crown land" },
+    2302: { l3: "Other Crown land", l4: "Other Crown land — Indigenous" }
+  };
+
+  const LAND_LAYERS = [
+    { id: "private", label: "Private (freehold)", color: "#39ff9a", more: false, kind: "abares", values: [1001, 1002], keys: "private freehold land tenure" },
+    { id: "pastoral", label: "Crown — pastoral", color: "#ff8a1a", more: false, kind: "abares", values: [2121, 2122, 2141, 2142], keys: "crown pastoral lease land" },
+    { id: "crown", label: "Crown — other", color: "#b48aff", more: false, kind: "abares", values: [2111, 2131, 2132, 2151, 2152, 2161, 2162, 2231, 2232, 2301, 2302], keys: "crown lease other land" },
+    { id: "parks", label: "Parks / conservation", color: "#2ee86a", more: false, kind: "abares", values: [2211, 2212], keys: "parks conservation reserve land" },
+    { id: "nt-excl", label: "Native title (exclusive)", color: "#ff2ea8", more: false, kind: "nntt", cql: "DETOUTCOME = 'Native title exists (exclusive)'", keys: "native title exclusive aboriginal indigenous land" },
+    { id: "nt-non", label: "Native title (non-exclusive)", color: "#4f9fff", more: false, kind: "nntt", cql: "DETOUTCOME = 'Native title exists (non-exclusive)'", keys: "native title non-exclusive aboriginal indigenous land" },
+    { id: "ilua", label: "ILUA", color: "#ffe14d", more: true, kind: "ilua", keys: "ilua indigenous land use agreement" },
+    { id: "forest", label: "Forest (multiple-use public)", color: "#7ee000", more: true, kind: "abares", values: [2221], keys: "forest public crown land" },
+    { id: "nt-none", label: "Native title does not exist / extinguished", color: "#8a8a8a", more: true, kind: "nntt", cql: "DETOUTCOME IN ('Native title does not exist','Native title extinguished')", keys: "native title extinguished does not exist" },
+    { id: "nodata", label: "Unresolved / no data", color: "#6b7280", more: true, kind: "abares", values: [0], keys: "unresolved no data land tenure" }
+  ];
 
   const KINDS = [
     { id: "granite", label: "granite", color: "#f4b6c2" },
@@ -189,6 +236,9 @@
   const railToggle = document.getElementById("rail-toggle");
   const panelEl = document.getElementById("panel");
   const layerFilter = document.getElementById("layer-filter");
+  const landRail = document.getElementById("land-rail");
+  const landMore = document.getElementById("land-more");
+  const landMoreBtn = document.getElementById("land-more-btn");
 
   let manifest = null;
   const layerMeta = {};
@@ -223,6 +273,8 @@
   let liveTitlesSeq = 0;
   let findApiSeq = 0;
   let identifySeq = 0;
+  let landIdentSeq = 0;
+  const landReady = {};
   let companyApiCache = {};
   let lastLiveTitlesTruncated = false;
   const DEMO_NA = "DEMO — n/a";
@@ -2625,6 +2677,329 @@
     }
   }
 
+  function landInput(spec) {
+    return document.getElementById("land-" + spec.id);
+  }
+
+  function selectedLandSpecs() {
+    return LAND_LAYERS.filter(function (spec) {
+      const inp = landInput(spec);
+      return inp && inp.checked;
+    });
+  }
+
+  function anyLandOn() {
+    return selectedLandSpecs().length > 0;
+  }
+
+  function landBeforeId() {
+    if (map.getLayer("au-states")) return "au-states";
+    if (map.getLayer("au-coast")) return "au-coast";
+    return firstTitleLayerId();
+  }
+
+  function abaresRemapRule(values, hex) {
+    const rgb = hexToRgb(hex);
+    const ranges = [];
+    const outs = [];
+    values.forEach(function (v) {
+      ranges.push(v, v + 1);
+      outs.push(1);
+    });
+    return {
+      rasterFunction: "Colormap",
+      rasterFunctionArguments: {
+        Colormap: [[1, rgb.r, rgb.g, rgb.b]],
+        Raster: {
+          rasterFunction: "Remap",
+          rasterFunctionArguments: {
+            InputRanges: ranges,
+            OutputValues: outs,
+            AllowUnmatched: false
+          }
+        }
+      }
+    };
+  }
+
+  function abaresTileUrl(spec) {
+    return (
+      ABARES_IMG +
+      "/exportImage?bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&size=256,256" +
+      "&format=png32&transparent=true&interpolation=RSP_NearestNeighbor&f=image" +
+      "&renderingRule=" +
+      encodeURIComponent(JSON.stringify(abaresRemapRule(spec.values, spec.color)))
+    );
+  }
+
+  function landSld(layerName, color) {
+    return (
+      '<?xml version="1.0" encoding="UTF-8"?>' +
+      '<StyledLayerDescriptor version="1.0.0" xmlns="http://www.opengis.net/sld">' +
+      "<NamedLayer><Name>" +
+      layerName +
+      "</Name><UserStyle><FeatureTypeStyle><Rule><PolygonSymbolizer>" +
+      '<Fill><CssParameter name="fill">' +
+      color +
+      '</CssParameter><CssParameter name="fill-opacity">0.5</CssParameter></Fill>' +
+      '<Stroke><CssParameter name="stroke">' +
+      color +
+      '</CssParameter><CssParameter name="stroke-width">0.5</CssParameter></Stroke>' +
+      "</PolygonSymbolizer></Rule></FeatureTypeStyle></UserStyle></NamedLayer>" +
+      "</StyledLayerDescriptor>"
+    );
+  }
+
+  function wmsTileUrl(host, layerName, color, cql, minZoomHint) {
+    let url =
+      host +
+      "?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&FORMAT=image/png&TRANSPARENT=true" +
+      "&LAYERS=" + encodeURIComponent(layerName) +
+      "&CRS=EPSG:3857&STYLES=&WIDTH=256&HEIGHT=256&BBOX={bbox-epsg-3857}" +
+      "&SLD_BODY=" + encodeURIComponent(landSld(layerName, color));
+    if (cql) url += "&CQL_FILTER=" + encodeURIComponent(cql);
+    return url;
+  }
+
+  function landTiles(spec) {
+    if (spec.kind === "abares") return [abaresTileUrl(spec)];
+    if (spec.kind === "ilua") return [wmsTileUrl(ILUA_WMS, ILUA_LAYER, spec.color, spec.cql)];
+    return [wmsTileUrl(NNTT_WMS, NNTT_LAYER, spec.color, spec.cql)];
+  }
+
+  function landAttribution(spec) {
+    if (spec.kind === "abares") return "Land tenure: ABARES / ACLUMP 2020–21 CC BY 4.0";
+    return "Native title / ILUA: National Native Title Tribunal CC BY 4.0";
+  }
+
+  function ensureLandLayer(spec) {
+    const lid = "land-" + spec.id;
+    const sid = "src-land-" + spec.id;
+    if (map.getLayer(lid)) {
+      map.setLayoutProperty(lid, "visibility", "visible");
+      return Promise.resolve();
+    }
+    if (landReady[spec.id]) return landReady[spec.id];
+    landReady[spec.id] = new Promise(function (resolve, reject) {
+      try {
+        if (!map.getSource(sid)) {
+          map.addSource(sid, {
+            type: "raster",
+            tiles: landTiles(spec),
+            tileSize: 256,
+            attribution: landAttribution(spec)
+          });
+        }
+        map.addLayer(
+          {
+            id: lid,
+            type: "raster",
+            source: sid,
+            minzoom: spec.kind === "abares" ? 0 : 3,
+            paint: {
+              "raster-opacity": spec.kind === "abares" ? 0.52 : 0.48,
+              "raster-resampling": "nearest"
+            }
+          },
+          landBeforeId()
+        );
+        resolve();
+      } catch (err) {
+        landReady[spec.id] = null;
+        reject(err);
+      }
+    });
+    return landReady[spec.id];
+  }
+
+  function setLandLayerOn(spec, on) {
+    const lid = "land-" + spec.id;
+    if (!on) {
+      setLayerVisible(lid, false);
+      return Promise.resolve();
+    }
+    return ensureLandLayer(spec);
+  }
+
+  function onLandToggle(spec, input) {
+    const row = input && input.closest ? input.closest(".row") : null;
+    if (!input.checked) {
+      setLandLayerOn(spec, false);
+      return;
+    }
+    const msg = spec.kind === "nntt" || spec.kind === "ilua" ? "Loading " + spec.label + "…" : "Loading land…";
+    void withLayerBusy(msg, row, function () { return setLandLayerOn(spec, true); });
+  }
+
+  function buildLandToggles() {
+    const top = landRail;
+    const tail = landMore;
+    if (!top || top.childElementCount) return;
+    LAND_LAYERS.forEach(function (spec) {
+      const lab = document.createElement("label");
+      lab.className = "row";
+      lab.setAttribute("data-keys", spec.keys);
+      lab.innerHTML =
+        '<input type="checkbox" id="land-' +
+        spec.id +
+        '" />' +
+        '<span class="swatch" style="background:' +
+        spec.color +
+        '"></span>' +
+        "<span>" +
+        spec.label +
+        "</span>";
+      const inp = lab.querySelector("input");
+      inp.addEventListener("change", function () { onLandToggle(spec, inp); });
+      if (spec.more && tail) tail.appendChild(lab);
+      else top.appendChild(lab);
+    });
+    if (landMoreBtn && tail && tail.children.length) {
+      landMoreBtn.hidden = false;
+      landMoreBtn.addEventListener("click", function () {
+        const open = tail.hidden;
+        tail.hidden = !open;
+        landMoreBtn.textContent = open ? "Show less" : "See more";
+      });
+    }
+  }
+  buildLandToggles();
+
+  function identifyAbares(lngLat) {
+    const wanted = {};
+    selectedLandSpecs().forEach(function (spec) {
+      if (spec.kind !== "abares") return;
+      (spec.values || []).forEach(function (v) { wanted[v] = spec; });
+    });
+    if (!Object.keys(wanted).length) return Promise.resolve(null);
+    const geom = JSON.stringify({
+      x: lngLat.lng,
+      y: lngLat.lat,
+      spatialReference: { wkid: 4326 }
+    });
+    const url =
+      ABARES_IMG +
+      "/identify?f=json&geometryType=esriGeometryPoint&sr=4326&returnGeometry=false&geometry=" +
+      encodeURIComponent(geom);
+    return fetch(url)
+      .then(function (r) {
+        if (!r.ok) throw new Error("ABARES identify " + r.status);
+        return r.json();
+      })
+      .then(function (data) {
+        const raw = data && data.value;
+        const v = raw === "NoData" || raw == null || raw === "" ? null : Number(raw);
+        if (v == null || isNaN(v) || !wanted[v]) return null;
+        const meta = LAND_RAT[v] || { l3: "Tenure class " + v, l4: "Tenure class " + v };
+        return {
+          kind: "abares",
+          title: meta.l4,
+          sub: meta.l3 !== meta.l4 ? meta.l3 + " · ABARES / ACLUMP 2020–21 (250 m)" : "ABARES / ACLUMP 2020–21 (250 m)"
+        };
+      })
+      .catch(function (err) {
+        log("Land identify (ABARES): " + ((err && err.message) || "failed"));
+        return null;
+      });
+  }
+
+  function wfsPointFeatures(host, typeName, lngLat, cql) {
+    const d = 0.03;
+    const qs = [
+      "service=WFS",
+      "version=1.1.0",
+      "request=GetFeature",
+      "typeName=" + encodeURIComponent(typeName),
+      "outputFormat=" + encodeURIComponent("application/json"),
+      "maxFeatures=6",
+      "bbox=" + [lngLat.lng - d, lngLat.lat - d, lngLat.lng + d, lngLat.lat + d, "EPSG:4326"].join(",")
+    ];
+    if (cql) qs.push("CQL_FILTER=" + encodeURIComponent(cql));
+    return fetch(host + "?" + qs.join("&"))
+      .then(function (r) {
+        if (!r.ok) throw new Error("WFS " + r.status);
+        return r.json();
+      })
+      .then(function (gj) { return gj.features || []; });
+  }
+
+  function identifyNntt(lngLat) {
+    const specs = selectedLandSpecs().filter(function (s) { return s.kind === "nntt"; });
+    if (!specs.length) return Promise.resolve(null);
+    const jobs = specs.map(function (spec) {
+      return wfsPointFeatures(NNTT_WFS, NNTT_LAYER, lngLat, spec.cql)
+        .then(function (feats) {
+          const f = feats[0];
+          if (!f) return null;
+          const p = f.properties || {};
+          return {
+            kind: "nntt",
+            title: p.DETOUTCOME || spec.label,
+            sub: [p.NAME, p.TRIBID, "NNTT"].filter(Boolean).join(" · ")
+          };
+        })
+        .catch(function () { return null; });
+    });
+    return Promise.all(jobs).then(function (rows) {
+      return rows.filter(Boolean)[0] || null;
+    });
+  }
+
+  function identifyIlua(lngLat) {
+    const spec = LAND_LAYERS.find(function (s) { return s.id === "ilua"; });
+    const inp = spec && landInput(spec);
+    if (!inp || !inp.checked) return Promise.resolve(null);
+    return wfsPointFeatures(ILUA_WFS, ILUA_LAYER, lngLat, null)
+      .then(function (feats) {
+        const f = feats[0];
+        if (!f) return null;
+        const p = f.properties || {};
+        return {
+          kind: "ilua",
+          title: p.NAME || "ILUA",
+          sub: [p.AGSTATUS, p.AGTYPE, "NNTT"].filter(Boolean).join(" · ")
+        };
+      })
+      .catch(function () { return null; });
+  }
+
+  function landIdentifyHtml(rows) {
+    if (!rows || !rows.length) return "";
+    let html = '<div class="popup-links" id="popup-land"><h4>Land</h4>';
+    rows.forEach(function (row) {
+      html +=
+        '<div class="popup-id"><strong>' +
+        escapeHtml(row.title) +
+        "</strong> · " +
+        escapeHtml(row.sub) +
+        "</div>";
+    });
+    html += '<p class="popup-more">Tenure is 250 m national class, not a lot. Native title is a rights overlay, not a title.</p></div>';
+    return html;
+  }
+
+  function attachLandIdentify(lngLat) {
+    if (!anyLandOn()) return;
+    const seq = ++landIdentSeq;
+    Promise.all([identifyAbares(lngLat), identifyNntt(lngLat), identifyIlua(lngLat)])
+      .then(function (parts) {
+        if (seq !== landIdentSeq) return;
+        const rows = parts.filter(Boolean);
+        const html = landIdentifyHtml(rows);
+        if (!html) return;
+        const root = popup.getElement();
+        if (!root || !popup.isOpen()) return;
+        let el = root.querySelector("#popup-land");
+        if (!el) {
+          el = document.createElement("div");
+          const content = root.querySelector(".maplibregl-popup-content");
+          if (!content) return;
+          content.appendChild(el);
+        }
+        el.outerHTML = html;
+      });
+  }
+
   if (findInput) {
     let findTimer = null;
     findInput.addEventListener("input", function () {
@@ -2648,26 +3023,31 @@
     document.querySelectorAll(".layers .lg").forEach(function (sec) {
       const groupKeys = sec.getAttribute("data-keys") || "";
       let any = false;
-      let moreHit = false;
       sec.querySelectorAll(".row").forEach(function (row) {
         const keys = (row.getAttribute("data-keys") || "") + " " + (row.textContent || "") + " " + groupKeys;
         const hit = layerTokenHit(keys, q);
         row.hidden = !hit;
         if (hit) any = true;
-        if (hit && mineralMore && mineralMore.contains(row)) moreHit = true;
       });
       sec.hidden = !!q && !any;
-      if (mineralMore && mineralMoreBtn && sec.contains(mineralMore)) {
+      function syncMore(moreEl, moreBtn) {
+        if (!moreEl || !moreBtn || !sec.contains(moreEl)) return;
+        let extraHit = false;
+        moreEl.querySelectorAll(".row").forEach(function (row) {
+          if (!row.hidden) extraHit = true;
+        });
         if (q) {
-          mineralMore.hidden = !moreHit;
-          mineralMoreBtn.hidden = true;
+          moreEl.hidden = !extraHit;
+          moreBtn.hidden = true;
         } else {
-          mineralMoreBtn.hidden = !mineralMore.children.length;
-          if (!mineralMoreBtn.hidden && mineralMoreBtn.textContent === "See more") {
-            mineralMore.hidden = true;
+          moreBtn.hidden = !moreEl.children.length;
+          if (!moreBtn.hidden && moreBtn.textContent === "See more") {
+            moreEl.hidden = true;
           }
         }
       }
+      syncMore(mineralMore, mineralMoreBtn);
+      syncMore(landMore, landMoreBtn);
     });
   }
 
@@ -2828,7 +3208,7 @@
   });
 
 
-  const ASSET_V = "20260829f";
+  const ASSET_V = "20260829g";
   const VS_A_COLOR = "#00c8ff";
   const VS_B_COLOR = "#ff2bd6";
   const GROUND_KEY = "xplorr.myground";
@@ -3221,6 +3601,7 @@
   function showOccIdentify(lngLat, props) {
     props = props || {};
     popup.setLngLat(lngLat).setHTML(occPopupHtml(props) + '<div id="popup-extra"></div>').addTo(map);
+    attachLandIdentify(lngLat);
     const extraWait = function () {
       const el = document.getElementById("popup-extra");
       if (!el) return;
@@ -3346,6 +3727,7 @@
     lastTitle = { name: props.name, holder: props.holder, state: props.state, lng: lngLat.lng, lat: lngLat.lat };
     const extra = '<button type="button" class="popup-pin" id="pin-this">Pin this title</button><div id="popup-extra"></div>';
     popup.setLngLat(lngLat).setHTML(popupHtml(props) + extra).addTo(map);
+    attachLandIdentify(lngLat);
     bindPinButton(props);
     ensureReports().then(function () {
       const el = document.getElementById("popup-extra");
@@ -3356,6 +3738,7 @@
   function showHexIdentify(lngLat, props, label) {
     const rows = hexPopupHtml(props, label);
     popup.setLngLat(lngLat).setHTML(rows + '<div id="popup-extra"><p class="popup-more">Loading reports…</p></div>').addTo(map);
+    attachLandIdentify(lngLat);
     const extraWait = function () {
       const el = document.getElementById("popup-extra");
       if (!el) return;
@@ -3985,6 +4368,7 @@
         ], "popup-open") + disclaimer
       );
       if (openGroundMode) setOpenParam(share);
+      attachLandIdentify(lngLat);
       return;
     }
     if (opts.failed) {
@@ -3996,6 +4380,7 @@
         ], "popup-open") +
         '<p class="popup-more">Not marking this point as open.</p>'
       );
+      attachLandIdentify(lngLat);
       return;
     }
     if (!titles.length) {
@@ -4009,6 +4394,7 @@
         ].filter(function (r) { return r[1]; }), "popup-open") + disclaimer
       );
       if (openGroundMode) setOpenParam(share);
+      attachLandIdentify(lngLat);
       return;
     }
     const first = titles[0].props || titles[0] || {};
@@ -4050,6 +4436,7 @@
     html += disclaimer;
     popup.setHTML(html);
     lastTitle = { name: np.name, holder: np.holder, state: np.state, lng: lng, lat: lat };
+    attachLandIdentify(lngLat);
     bindPinButton(np);
     const root = popup.getElement();
     if (root) {
@@ -4676,6 +5063,7 @@
         ["Latitude", fmtCoord(lngLat.lat)]
       ])
     ).addTo(map);
+    attachLandIdentify(lngLat);
     return fetchApi("/v1/identify", { lng: lngLat.lng, lat: lngLat.lat }, 12000).then(function (data) {
       if (seq !== identifySeq || !popup.isOpen()) return;
       const titles = (data.titles || []).map(function (t) { return { props: normalizeTitleProps(t) }; });
@@ -4818,6 +5206,7 @@
       const geos = map.queryRenderedFeatures(e.point, { layers: ["geo-fill"] });
       if (geos.length) {
         popup.setLngLat(e.lngLat).setHTML(geoPopupHtml(geos[0].properties || {})).addTo(map);
+        attachLandIdentify(e.lngLat);
         return;
       }
     }
@@ -4844,6 +5233,7 @@
     addAustraliaBase();
     buildKindToggles();
     buildMineralToggles();
+    buildLandToggles();
     if (osmToggle && osmToggle.checked) ensureOsm(true);
     fetch("data/overlay_manifest.json")
       .then(function (r) { return r.ok ? r.json() : null; })
