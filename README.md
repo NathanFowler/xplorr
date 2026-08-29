@@ -36,7 +36,7 @@ Applies to **occurrences only**. The rail exposes **Gold** and **Other**; tickin
 
 ## Occurrences
 
-Clustered mineral occurrences / mines (`data/occ.json`, occ-v2 slim pack). Off until Gold or Other is ticked. **WA MINEDEX is CC BY-NC 4.0.**
+Mineral occurrences / mines (`data/occ.json`, occ-v2 slim pack). Off until Gold or Other is ticked. At continent / wide zoom they draw as a MapLibre heatmap (gold or magenta glow — density, not count badges). Clusters and named sites appear from about zoom 7.5; unnamed historic workings from zoom 11. **WA MINEDEX is CC BY-NC 4.0.**
 
 Commodity filters (including gold) plot **named / size MINOR+ / real production** sites first. Unnamed and UNKNOWN historic workings stay off until zoom 11 and draw smaller. Cluster click opens a short named-site list; a row opens the full card. Zoom-in remains a secondary control.
 
