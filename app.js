@@ -164,6 +164,7 @@
   const demoBanner = document.getElementById("demo-banner");
   const railToggle = document.getElementById("rail-toggle");
   const panelEl = document.getElementById("panel");
+  const layerFilter = document.getElementById("layer-filter");
 
   let manifest = null;
   const layerMeta = {};
@@ -2324,6 +2325,35 @@
     });
   }
 
+  function layerTokenHit(blob, q) {
+    if (!q) return true;
+    const tokens = String(blob || "").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+    for (let i = 0; i < tokens.length; i++) {
+      if (tokens[i].indexOf(q) === 0) return true;
+    }
+    return false;
+  }
+
+  function applyLayerKeywordFilter() {
+    if (!layerFilter) return;
+    const q = String(layerFilter.value || "").trim().toLowerCase();
+    document.querySelectorAll(".layers .lg").forEach(function (sec) {
+      const groupKeys = sec.getAttribute("data-keys") || "";
+      let any = false;
+      sec.querySelectorAll(".row").forEach(function (row) {
+        const keys = (row.getAttribute("data-keys") || "") + " " + (row.textContent || "") + " " + groupKeys;
+        const hit = layerTokenHit(keys, q);
+        row.hidden = !hit;
+        if (hit) any = true;
+      });
+      sec.hidden = !!q && !any;
+    });
+  }
+
+  if (layerFilter) {
+    layerFilter.addEventListener("input", applyLayerKeywordFilter);
+  }
+
   osmToggle.addEventListener("change", function () {
     ensureOsm(osmToggle.checked);
     updateLegend();
@@ -2383,9 +2413,11 @@
     if (kindsMaster.checked) {
       kindBox.classList.remove("disabled");
       loadGeologyKinds();
+      if (geoSearch) geoSearch.hidden = false;
     } else {
       kindBox.classList.add("disabled");
       applyGeoFilter();
+      if (geoSearch) geoSearch.hidden = true;
     }
     updateLegend();
   });
@@ -2394,6 +2426,7 @@
     if (!kindsMaster.checked) {
       kindsMaster.checked = true;
       kindBox.classList.remove("disabled");
+      if (geoSearch) geoSearch.hidden = false;
     }
     if (!geoLoaded) loadGeologyKinds();
     else applyGeoFilter();
@@ -2463,7 +2496,7 @@
   });
 
 
-  const ASSET_V = "20260829a";
+  const ASSET_V = "20260829b";
   const VS_A_COLOR = "#00c8ff";
   const VS_B_COLOR = "#ff2bd6";
   const GROUND_KEY = "xplorr.myground";

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Xplorr</title>
   <link rel="stylesheet" href="vendor/maplibre-gl.css" />
-  <link rel="stylesheet" href="app.css?v=20260829a" />
+  <link rel="stylesheet" href="app.css?v=20260829b" />
 </head>
 <body>
   <button type="button" id="rail-toggle" aria-expanded="false" aria-controls="panel">Layers</button>
@@ -16,40 +16,43 @@
 
     <input type="search" id="find" placeholder="Title, company…" autocomplete="off" />
     <div id="find-results" hidden></div>
+    <input type="search" id="layer-filter" placeholder="Filter layers…" autocomplete="off" />
 
     <nav class="layers" aria-label="Map layers">
-      <section class="lg">
+      <section class="lg" data-keys="base outline australia coastline land">
         <h2>Base</h2>
-        <label class="row"><input type="checkbox" id="au-outline" checked /><span class="swatch line" style="--c:#f2f2f2"></span><span>Australia outline</span></label>
-        <label class="row"><input type="checkbox" id="au-states" checked /><span class="swatch line" style="--c:#444"></span><span>State lines</span></label>
-        <label class="row"><input type="checkbox" id="osm" /><span class="swatch" style="background:#555"></span><span>Streets</span></label>
+        <label class="row" data-keys="australia outline coastline coast land"><input type="checkbox" id="au-outline" checked /><span class="swatch line" style="--c:#f2f2f2"></span><span>Australia outline</span></label>
+        <label class="row" data-keys="state lines borders boundaries"><input type="checkbox" id="au-states" checked /><span class="swatch line" style="--c:#444"></span><span>State lines</span></label>
       </section>
-      <section class="lg">
+      <section class="lg" data-keys="titles tenement live dead historic">
         <h2>Titles</h2>
-        <label class="row"><input type="checkbox" id="live-master" checked /><span class="swatch" style="background:#00c8ff"></span><span>Live titles</span></label>
-        <label class="row"><input type="checkbox" id="dead-master" /><span class="swatch" style="background:#666"></span><span>Dead / historic</span></label>
+        <label class="row" data-keys="live titles tenement register"><input type="checkbox" id="live-master" checked /><span class="swatch" style="background:#00c8ff"></span><span>Live titles</span></label>
+        <label class="row" data-keys="dead historic titles expired"><input type="checkbox" id="dead-master" /><span class="swatch" style="background:#666"></span><span>Dead / historic</span></label>
       </section>
-      <section class="lg">
+      <section class="lg" data-keys="occurrences minerals mines gold">
         <h2>Occurrences</h2>
-        <label class="row"><input type="checkbox" id="occ-gold" /><span class="swatch round" style="background:#ffd000"></span><span>Gold</span></label>
-        <label class="row"><input type="checkbox" id="occ-other" /><span class="swatch round" style="background:#ff2bd6"></span><span>Other</span></label>
+        <label class="row" data-keys="gold occurrences mines au"><input type="checkbox" id="occ-gold" /><span class="swatch round" style="background:#ffd000"></span><span>Gold</span></label>
+        <label class="row" data-keys="other occurrences minerals copper mines"><input type="checkbox" id="occ-other" /><span class="swatch round" style="background:#ff2bd6"></span><span>Other</span></label>
       </section>
-      <section class="lg">
+      <section class="lg" data-keys="drilling holes collars">
         <h2>Drilling</h2>
-        <label class="row"><input type="checkbox" id="holes-master" /><span class="swatch" style="background:#c8ff00"></span><span>Holes</span></label>
+        <label class="row" data-keys="holes drilling collars density"><input type="checkbox" id="holes-master" /><span class="swatch" style="background:#c8ff00"></span><span>Holes</span></label>
       </section>
-      <section class="lg">
+      <section class="lg" data-keys="geology rock unit formation">
         <h2>Geology</h2>
-        <label class="row"><input type="checkbox" id="geo-kinds" /><span class="swatch" style="background:#7ec8c0"></span><span>Geology</span></label>
-        <input type="search" id="geo-search" placeholder="Formation / unit" autocomplete="off" />
+        <label class="row" data-keys="geology kinds rock unit formation"><input type="checkbox" id="geo-kinds" /><span class="swatch" style="background:#7ec8c0"></span><span>Geology</span></label>
+        <input type="search" id="geo-search" placeholder="Formation / unit" autocomplete="off" hidden />
       </section>
-      <section class="lg">
+      <section class="lg" data-keys="reports catalogue wamex">
         <h2>Reports</h2>
-        <label class="row"><input type="checkbox" id="reports-master" /><span class="swatch round" style="background:#ff7a1a"></span><span>Catalogue</span></label>
+        <label class="row" data-keys="reports catalogue wamex"><input type="checkbox" id="reports-master" /><span class="swatch round" style="background:#ff7a1a"></span><span>Catalogue</span></label>
       </section>
-      <section class="lg">
+      <section class="lg" data-keys="geochem samples assays">
         <h2>Geochem</h2>
-        <label class="row"><input type="checkbox" id="gchem-master" /><span class="swatch" style="background:#c77dff"></span><span>Samples</span></label>
+        <label class="row" data-keys="geochem samples assays"><input type="checkbox" id="gchem-master" /><span class="swatch" style="background:#c77dff"></span><span>Samples</span></label>
+      </section>
+      <section class="lg lg-streets" data-keys="streets osm basemap">
+        <label class="row" data-keys="streets osm roads basemap"><input type="checkbox" id="osm" /><span class="swatch" style="background:#555"></span><span>Streets</span></label>
       </section>
     </nav>
 
@@ -121,6 +124,6 @@
   </aside>
   <div id="popup" class="hidden"></div>
   <script src="vendor/maplibre-gl.js"></script>
-  <script src="app.js?v=20260829a"></script>
+  <script src="app.js?v=20260829b"></script>
 </body>
 </html>

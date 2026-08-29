@@ -56,12 +56,12 @@ h1 {
 .api-chip.offline { color: #888; border-color: #333; }
 
 h2 {
-  font-size: 0.62rem;
+  font-size: 0.58rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: #888;
-  margin: 0 0 4px;
+  margin: 0 0 2px;
 }
 h3 {
   font-size: 0.62rem;
@@ -72,21 +72,23 @@ h3 {
   margin: 12px 0 6px;
 }
 
-.layers { margin: 10px 0 0; }
+.layers { margin: 6px 0 0; }
 .lg {
   border-top: 1px solid #222;
-  padding: 8px 0 6px;
+  padding: 5px 0 3px;
 }
-.lg:first-child { border-top: 0; padding-top: 2px; }
+.lg:first-child { border-top: 0; padding-top: 0; }
+.lg-streets { padding-top: 6px; }
+.lg[hidden], .row[hidden] { display: none; }
 
 .row {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 0.8rem;
-  line-height: 1.25;
-  margin: 2px 0;
-  padding: 3px 2px;
+  line-height: 1.2;
+  margin: 1px 0;
+  padding: 2px 2px;
   cursor: pointer;
   color: #fff;
 }
@@ -131,7 +133,7 @@ footer { margin-top: 12px; font-size: 0.68rem; color: #888; line-height: 1.4; }
 }
 .demo-banner[hidden] { display: none; }
 
-#find, #geo-search, #ground-name, #ground-company, #ground-vs, #ground-titles {
+#find, #layer-filter, #geo-search, #ground-name, #ground-company, #ground-vs, #ground-titles {
   width: 100%;
   margin: 0 0 6px;
   padding: 6px 8px;
@@ -142,8 +144,10 @@ footer { margin-top: 12px; font-size: 0.68rem; color: #888; line-height: 1.4; }
   font-size: 0.78rem;
 }
 #find { margin: 0 0 4px; }
-#geo-search { margin: 4px 0 0; }
-#find:focus, #geo-search:focus,
+#layer-filter { margin: 0 0 2px; color: #aaa; font-size: 0.72rem; padding: 5px 8px; }
+#geo-search { margin: 3px 0 0; }
+#geo-search[hidden] { display: none; }
+#find:focus, #layer-filter:focus, #geo-search:focus,
 #ground-name:focus, #ground-company:focus, #ground-vs:focus, #ground-titles:focus {
   outline: 1px solid #aaa;
 }
