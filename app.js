@@ -35,6 +35,9 @@
   const TITLE_DEAD_COLOR = "#666666";
   const OCC_GOLD_COLOR = "#ffd000";
   const OCC_OTHER_COLOR = "#ff2bd6";
+  const OCC_HEAT_SRC = "occ-heat";
+  const OCC_HEAT_MAX_ZOOM = 8;
+  const OCC_CLUSTER_MIN_ZOOM = 7.5;
   const HOLES_COLOR = "#c8ff00";
   const REPORTS_COLOR = "#ff7a1a";
   const AU_COAST_COLOR = "#f2f2f2";
@@ -2001,7 +2004,36 @@
     map.setFilter(layer, filter);
   }
 
-  const OCC_LAYERS = ["occ-clusters", "occ-cluster-count", "occ-point", "occ-sec-point"];
+  const OCC_LAYERS = [
+    "occ-heat-gold",
+    "occ-heat-other",
+    "occ-clusters",
+    "occ-cluster-count",
+    "occ-point",
+    "occ-sec-point"
+  ];
+
+  function occHeatPaint(rgb, peak) {
+    return {
+      "heatmap-weight": 1,
+      "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 3, 0.35, 7, 1.15],
+      "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 3, 14, 7, 22],
+      "heatmap-opacity": [
+        "interpolate", ["linear"], ["zoom"],
+        3, 0.88,
+        7, 0.72,
+        OCC_HEAT_MAX_ZOOM, 0
+      ],
+      "heatmap-color": [
+        "interpolate", ["linear"], ["heatmap-density"],
+        0, "rgba(" + rgb + ",0)",
+        0.12, "rgba(" + rgb + ",0.18)",
+        0.35, "rgba(" + rgb + ",0.45)",
+        0.6, "rgba(" + rgb + ",0.7)",
+        1, "rgba(" + (peak || "255,255,220") + ",0.92)"
+      ]
+    };
+  }
 
   function applyOccFilter() {
     if (!occPack || !map.getSource("occ")) return;
@@ -2013,6 +2045,7 @@
     }
     const gj = occToGJ(occPack, selectedOverlayStates(occBox));
     map.getSource("occ").setData(gj.pri);
+    if (map.getSource(OCC_HEAT_SRC)) map.getSource(OCC_HEAT_SRC).setData(gj.pri);
     if (map.getSource("occ-sec")) map.getSource("occ-sec").setData(gj.sec);
     OCC_LAYERS.forEach(function (id) {
       if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "visible");
@@ -2048,14 +2081,35 @@
             clusterRadius: 42,
             attribution: "Occurrences: GSNSW / GSQ / GSV / MRT / NTGS; WA MINEDEX CC BY-NC 4.0"
           });
+          map.addSource(OCC_HEAT_SRC, {
+            type: "geojson",
+            data: gj.pri
+          });
           map.addSource("occ-sec", {
             type: "geojson",
             data: gj.sec
           });
           map.addLayer({
+            id: "occ-heat-gold",
+            type: "heatmap",
+            source: OCC_HEAT_SRC,
+            maxzoom: OCC_HEAT_MAX_ZOOM,
+            filter: ["==", ["get", "fam"], "gold"],
+            paint: occHeatPaint("255,208,0", "255,255,220")
+          });
+          map.addLayer({
+            id: "occ-heat-other",
+            type: "heatmap",
+            source: OCC_HEAT_SRC,
+            maxzoom: OCC_HEAT_MAX_ZOOM,
+            filter: ["==", ["get", "fam"], "other"],
+            paint: occHeatPaint("255,43,214", "255,190,240")
+          });
+          map.addLayer({
             id: "occ-clusters",
             type: "circle",
             source: "occ",
+            minzoom: OCC_CLUSTER_MIN_ZOOM,
             filter: ["has", "point_count"],
             paint: {
               "circle-color": occFamilyColor(),
@@ -2069,6 +2123,7 @@
             id: "occ-cluster-count",
             type: "symbol",
             source: "occ",
+            minzoom: OCC_CLUSTER_MIN_ZOOM,
             filter: ["has", "point_count"],
             layout: {
               "text-field": ["get", "point_count_abbreviated"],
@@ -2080,6 +2135,7 @@
             id: "occ-point",
             type: "circle",
             source: "occ",
+            minzoom: OCC_CLUSTER_MIN_ZOOM,
             filter: ["!", ["has", "point_count"]],
             paint: {
               "circle-color": [
@@ -2130,6 +2186,7 @@
           });
         } else {
           map.getSource("occ").setData(gj.pri);
+          if (map.getSource(OCC_HEAT_SRC)) map.getSource(OCC_HEAT_SRC).setData(gj.pri);
           if (map.getSource("occ-sec")) map.getSource("occ-sec").setData(gj.sec);
         }
         occLoaded = true;
@@ -2496,7 +2553,7 @@
   });
 
 
-  const ASSET_V = "20260829b";
+  const ASSET_V = "20260829c";
   const VS_A_COLOR = "#00c8ff";
   const VS_B_COLOR = "#ff2bd6";
   const GROUND_KEY = "xplorr.myground";
