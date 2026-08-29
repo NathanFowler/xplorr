@@ -31,6 +31,14 @@
   const COMPANY_SRC = "src-company-api";
   const COMPANY_FILL = "company-api-fill";
   const COMPANY_LINE = "company-api-line";
+  const TITLE_LIVE_COLOR = "#00c8ff";
+  const TITLE_DEAD_COLOR = "#666666";
+  const OCC_GOLD_COLOR = "#ffd000";
+  const OCC_OTHER_COLOR = "#ff2bd6";
+  const HOLES_COLOR = "#c8ff00";
+  const REPORTS_COLOR = "#ff7a1a";
+  const AU_COAST_COLOR = "#f2f2f2";
+  const AU_STATE_COLOR = "#3a3a3a";
 
   const KINDS = [
     { id: "granite", label: "granite", color: "#f4b6c2" },
@@ -148,6 +156,14 @@
   const statusLine = document.getElementById("status-line");
   const legendLive = document.getElementById("legend-live");
   const apiChip = document.getElementById("api-chip");
+  const liveMaster = document.getElementById("live-master");
+  const occGold = document.getElementById("occ-gold");
+  const occOther = document.getElementById("occ-other");
+  const auOutline = document.getElementById("au-outline");
+  const auStates = document.getElementById("au-states");
+  const demoBanner = document.getElementById("demo-banner");
+  const railToggle = document.getElementById("rail-toggle");
+  const panelEl = document.getElementById("panel");
 
   let manifest = null;
   const layerMeta = {};
@@ -209,13 +225,13 @@
     }
     if (apiStatus.live && apiStatus.health) {
       const n = Number(apiStatus.health.titles || 0);
-      apiChip.textContent = "Live · " + n.toLocaleString() + " titles";
+      apiChip.textContent = "Live";
       apiChip.className = "api-chip live";
-      apiChip.title = "Read-only national register (" +
+      apiChip.title = "Read-only national register · " + n.toLocaleString() + " titles · " +
         Number(apiStatus.health.holes || 0).toLocaleString() + " holes · " +
-        Number(apiStatus.health.occs || 0).toLocaleString() + " occurrences)";
+        Number(apiStatus.health.occs || 0).toLocaleString() + " occurrences";
     } else {
-      apiChip.textContent = "Offline · static packs";
+      apiChip.textContent = "Offline";
       apiChip.className = "api-chip offline";
       apiChip.title = apiStatus.error
         ? "Register unreachable: " + apiStatus.error + ". Using frozen GeoJSON title packs."
@@ -411,12 +427,73 @@
   }
 
   function selectedLiveStates() {
+    if (liveMaster && !liveMaster.checked) return [];
     const out = [];
     STATES.forEach(function (s) {
       const inp = liveBox ? liveBox.querySelector('input[data-state="' + s.id + '"][data-life="live"]') : null;
       if (inp && inp.checked && !inp.disabled) out.push(s.id);
     });
     return out;
+  }
+
+  function titlePaintColor(life) {
+    return life === "dead" ? TITLE_DEAD_COLOR : TITLE_LIVE_COLOR;
+  }
+
+  function setLayerVisible(id, on) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", on ? "visible" : "none");
+  }
+
+  function occFamilyColor() {
+    return (occGold && occGold.checked) ? OCC_GOLD_COLOR : OCC_OTHER_COLOR;
+  }
+
+  function updateDemoBanner() {
+    if (!demoBanner) return;
+    const occOn = occMaster && occMaster.checked;
+    const holesOn = holesMaster && holesMaster.checked;
+    if (!occOn && !holesOn) {
+      demoBanner.hidden = true;
+      return;
+    }
+    demoBanner.hidden = false;
+    if (occOn && holesOn) demoBanner.textContent = "SA occurrences and QLD hole cells include DEMO fill.";
+    else if (occOn) demoBanner.textContent = "SA occurrences are a small DEMO set.";
+    else demoBanner.textContent = "QLD hole cells include DEMO fill.";
+  }
+
+  function setRailOpen(open) {
+    document.body.classList.toggle("rail-open", !!open);
+    if (railToggle) railToggle.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+
+  function addAustraliaBase() {
+    if (!map.getSource("au-coast")) {
+      map.addSource("au-coast", { type: "geojson", data: "data/australia_coast.geojson" });
+      map.addSource("au-states", { type: "geojson", data: "data/australia_states.geojson" });
+      map.addLayer({
+        id: "au-states",
+        type: "line",
+        source: "au-states",
+        paint: {
+          "line-color": AU_STATE_COLOR,
+          "line-width": ["interpolate", ["linear"], ["zoom"], 3, 0.55, 8, 0.8],
+          "line-opacity": 0.95
+        }
+      });
+      map.addLayer({
+        id: "au-coast",
+        type: "line",
+        source: "au-coast",
+        paint: {
+          "line-color": AU_COAST_COLOR,
+          "line-width": ["interpolate", ["linear"], ["zoom"], 3, 1.25, 7, 1.0, 11, 0.7],
+          "line-opacity": 1
+        }
+      });
+    }
+    setLayerVisible("au-coast", !auOutline || auOutline.checked);
+    setLayerVisible("au-states", !auStates || auStates.checked);
   }
 
   const apiHealthPromise = checkApiHealth();
@@ -436,7 +513,7 @@
       {
         id: "background",
         type: "background",
-        paint: { "background-color": "#0b1220" }
+        paint: { "background-color": "#000000" }
       }
     ]
   };
@@ -447,6 +524,7 @@
     center: [134.0, -26.5],
     zoom: 4.1,
     maxZoom: 14,
+    fadeDuration: 0,
     attributionControl: true
   });
   map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), "top-right");
@@ -823,10 +901,32 @@
   }
 
   function ensureOccurrencesOn() {
-    if (occMaster && !occMaster.checked) occMaster.checked = true;
-    if (occBox) occBox.classList.remove("disabled");
-    loadOccurrences();
+    if (occGold && !occGold.checked && occOther && !occOther.checked) {
+      if (occGold) occGold.checked = true;
+    }
+    syncOccFromFamily();
+  }
+
+  function syncOccFromFamily() {
+    const on = (occGold && occGold.checked) || (occOther && occOther.checked);
+    if (occMaster) occMaster.checked = !!on;
+    if (mineralBox) {
+      mineralBox.querySelectorAll('input[data-mineral]').forEach(function (inp) {
+        const id = inp.getAttribute("data-mineral");
+        inp.checked = id === "gold" ? !!(occGold && occGold.checked) : !!(occOther && occOther.checked);
+      });
+    }
+    if (on) {
+      if (occBox) occBox.classList.remove("disabled");
+      loadOccurrences();
+      if (map.getLayer("occ-clusters")) {
+        map.setPaintProperty("occ-clusters", "circle-color", occFamilyColor());
+      }
+    } else {
+      applyOccFilter();
+    }
     updateLegend();
+    updateDemoBanner();
   }
 
   function applyLayerFilterPair(fill, line, filter) {
@@ -1001,9 +1101,9 @@
       if (liveTitlesUsingApi) scheduleLiveTitles();
       return;
     }
-    if (!occLoaded && !occLoading) loadOccurrences();
-    if (!holesLoaded && !holesLoading) loadHex("holes");
-    if (!gchemLoaded && !gchemLoading) loadHex("gchem");
+    if (occMaster && occMaster.checked && !occLoaded && !occLoading) loadOccurrences();
+    if (holesMaster && holesMaster.checked && !holesLoaded && !holesLoading) loadHex("holes");
+    if (gchemMaster && gchemMaster.checked && !gchemLoaded && !gchemLoading) loadHex("gchem");
 
     const byKind = { title: [], occ: [], holes: [], gchem: [] };
     for (let i = 0; i < findIndex.length; i++) {
@@ -1012,8 +1112,11 @@
       if (byKind[it.kind]) byKind[it.kind].push(it);
     }
 
+    const findPending = (occMaster && occMaster.checked && !occLoaded) ||
+      (holesMaster && holesMaster.checked && !holesLoaded) ||
+      (gchemMaster && gchemMaster.checked && !gchemLoaded);
     renderFindResults(byKind, {
-      pending: !occLoaded || !holesLoaded || !gchemLoaded,
+      pending: findPending,
       sourceNote: apiStatus.live ? "" : (apiStatus.checked ? "Register offline — searching loaded packs only." : "")
     });
 
@@ -1024,7 +1127,7 @@
         if (seq !== findApiSeq || findQuery !== String(q || "").trim().toLowerCase()) return;
         mergeApiFindHits(byKind, apiHits);
         renderFindResults(byKind, {
-          pending: !occLoaded || !holesLoaded || !gchemLoaded,
+          pending: findPending,
           sourceNote: apiHits.note || "",
           titleTotal: apiHits.titleCount,
           occTotal: apiHits.occCount,
@@ -1033,7 +1136,7 @@
       }).catch(function (err) {
         if (seq !== findApiSeq) return;
         renderFindResults(byKind, {
-          pending: !occLoaded || !holesLoaded || !gchemLoaded,
+          pending: findPending,
           sourceNote: "Register query failed (" + ((err && err.message) || "error") + ") — showing loaded packs only."
         });
       });
@@ -1145,15 +1248,15 @@
     });
     if (!liveTitlesUsingApi) Object.keys(titleStates).forEach(ensureLiveTitleOn);
 
-    if (occN || byKind.occ.length) {
+    if ((occN || byKind.occ.length) && occMaster && occMaster.checked) {
       byKind.occ.forEach(function (it) { ensureOverlayStateOn(occBox, "occ", it.state); });
       enableOccLayer();
     }
-    if (holeN) {
+    if (holeN && holesMaster && holesMaster.checked) {
       byKind.holes.forEach(function (it) { ensureOverlayStateOn(holesBox, "holes", it.state); });
       enableHexLayer("holes");
     }
-    if (gchemN) {
+    if (gchemN && gchemMaster && gchemMaster.checked) {
       byKind.gchem.forEach(function (it) { ensureOverlayStateOn(gchemBox, "gchem", it.state); });
       enableHexLayer("gchem");
     }
@@ -1215,52 +1318,15 @@
   function updateLegend() {
     if (!legendLive) return;
     const rows = [];
-    STATES.forEach(function (s) {
-      const inp = liveBox ? liveBox.querySelector('input[data-state="' + s.id + '"][data-life="live"]') : null;
-      if (inp && inp.checked && !inp.disabled) {
-        rows.push(
-          '<div class="legend-row"><span class="swatch" style="background:' +
-            s.color +
-            '"></span><span>' +
-            s.name +
-            " title</span></div>"
-        );
-      }
-    });
-    if (occMaster && occMaster.checked) {
-      rows.push(
-        '<div class="legend-row"><span class="swatch round" style="background:#f2c14e"></span><span>Named / sized occurrence</span></div>'
-      );
-    }
-    if (kindsMaster && kindsMaster.checked) {
-      rows.push('<div class="legend-row"><span class="swatch" style="background:#7a9e7e"></span><span>Geology kinds</span></div>');
-    }
-    if (gaToggle && gaToggle.checked) {
-      rows.push('<div class="legend-row"><span class="swatch" style="background:#8c7b6b"></span><span>GA geology</span></div>');
-    }
-    if (holesMaster && holesMaster.checked) {
-      rows.push('<div class="legend-row"><span class="ramp holes" style="width:36px;height:8px;border-radius:4px"></span><span>Hole density</span></div>');
-    }
-    if (gchemMaster && gchemMaster.checked) {
-      rows.push('<div class="legend-row"><span class="ramp gchem" style="width:36px;height:8px;border-radius:4px"></span><span>Geochem density</span></div>');
-    }
-    if (reportsMaster && reportsMaster.checked) {
-      rows.push('<div class="legend-row"><span class="swatch round" style="background:#7ec4ff"></span><span>Joined reports</span></div>');
-    }
-    if (liveTitlesUsingApi) {
-      rows.unshift(
-        '<div class="legend-row"><span class="swatch" style="background:#d4d4d8"></span><span>Live titles (register' +
-          (lastLiveTitlesTruncated ? ", viewport capped" : "") +
-          ")</span></div>"
-      );
-    }
     if (vsPair && vsPair[0] && vsPair[1]) {
-      rows.unshift(
+      rows.push(
         '<div class="legend-row vs-a"><span class="swatch"></span><span>' + escapeHtml(vsPair[0]) + '</span></div>' +
         '<div class="legend-row vs-b"><span class="swatch"></span><span>' + escapeHtml(vsPair[1]) + '</span></div>'
       );
+    } else if (liveTitlesUsingApi && lastLiveTitlesTruncated) {
+      rows.push('<div class="legend-row"><span class="swatch" style="background:' + TITLE_LIVE_COLOR + '"></span><span>Live titles · viewport capped</span></div>');
     }
-    legendLive.innerHTML = rows.length ? rows.join("") : '<p class="legend-empty">Nothing on yet.</p>';
+    legendLive.innerHTML = rows.join("");
   }
 
 
@@ -1295,14 +1361,15 @@
         if (life === "live") indexLiveTitleGeoms(state, gj);
         if (map.getSource(sid)) return true;
         map.addSource(sid, { type: "geojson", data: gj, generateId: true });
-        const opacityFill = life === "live" ? 0.28 : 0.12;
-        const opacityLine = life === "live" ? 0.9 : 0.55;
+        const paintColor = titlePaintColor(life);
+        const opacityFill = life === "live" ? 0.22 : 0.1;
+        const opacityLine = life === "live" ? 0.95 : 0.55;
         map.addLayer({
           id: fill,
           type: "fill",
           source: sid,
           paint: {
-            "fill-color": color,
+            "fill-color": paintColor,
             "fill-opacity": opacityFill
           }
         });
@@ -1311,8 +1378,8 @@
           type: "line",
           source: sid,
           paint: {
-            "line-color": color,
-            "line-width": life === "live" ? 1.1 : 0.7,
+            "line-color": paintColor,
+            "line-width": life === "live" ? 1.15 : 0.7,
             "line-opacity": opacityLine
           }
         });
@@ -1368,13 +1435,13 @@
         id: LIVE_TITLES_FILL,
         type: "fill",
         source: LIVE_TITLES_SRC,
-        paint: { "fill-color": stateColorExpr(), "fill-opacity": 0.28 }
+        paint: { "fill-color": TITLE_LIVE_COLOR, "fill-opacity": 0.22 }
       });
       map.addLayer({
         id: LIVE_TITLES_LINE,
         type: "line",
         source: LIVE_TITLES_SRC,
-        paint: { "line-color": stateColorExpr(), "line-width": 1.1, "line-opacity": 0.9 }
+        paint: { "line-color": TITLE_LIVE_COLOR, "line-width": 1.15, "line-opacity": 0.95 }
       });
       map.on("mouseenter", LIVE_TITLES_FILL, function () { map.getCanvas().style.cursor = "pointer"; });
       map.on("mouseleave", LIVE_TITLES_FILL, function () { map.getCanvas().style.cursor = ""; });
@@ -1385,13 +1452,13 @@
         id: COMPANY_FILL,
         type: "fill",
         source: COMPANY_SRC,
-        paint: { "fill-color": stateColorExpr(), "fill-opacity": 0.38 }
+        paint: { "fill-color": TITLE_LIVE_COLOR, "fill-opacity": 0.32 }
       });
       map.addLayer({
         id: COMPANY_LINE,
         type: "line",
         source: COMPANY_SRC,
-        paint: { "line-color": stateColorExpr(), "line-width": 1.4, "line-opacity": 0.95 }
+        paint: { "line-color": TITLE_LIVE_COLOR, "line-width": 1.4, "line-opacity": 0.95 }
       });
       map.on("mouseenter", COMPANY_FILL, function () { map.getCanvas().style.cursor = "pointer"; });
       map.on("mouseleave", COMPANY_FILL, function () { map.getCanvas().style.cursor = ""; });
@@ -1409,33 +1476,40 @@
         "case",
         ["==", ["get", "_vs"], "a"], VS_A_COLOR,
         ["==", ["get", "_vs"], "b"], VS_B_COLOR,
-        stateColorExpr()
+        TITLE_LIVE_COLOR
       ];
       if (map.getLayer(COMPANY_FILL)) map.setPaintProperty(COMPANY_FILL, "fill-color", paint);
       if (map.getLayer(COMPANY_LINE)) map.setPaintProperty(COMPANY_LINE, "line-color", paint);
     } else {
-      if (map.getLayer(COMPANY_FILL)) map.setPaintProperty(COMPANY_FILL, "fill-color", stateColorExpr());
-      if (map.getLayer(COMPANY_LINE)) map.setPaintProperty(COMPANY_LINE, "line-color", stateColorExpr());
+      if (map.getLayer(COMPANY_FILL)) map.setPaintProperty(COMPANY_FILL, "fill-color", TITLE_LIVE_COLOR);
+      if (map.getLayer(COMPANY_LINE)) map.setPaintProperty(COMPANY_LINE, "line-color", TITLE_LIVE_COLOR);
     }
     const hideLive = !!(features && features.length);
+    const liveOn = !liveMaster || liveMaster.checked;
     if (map.getLayer(LIVE_TITLES_FILL)) {
-      map.setLayoutProperty(LIVE_TITLES_FILL, "visibility", hideLive ? "none" : "visible");
-      map.setLayoutProperty(LIVE_TITLES_LINE, "visibility", hideLive ? "none" : "visible");
+      map.setLayoutProperty(LIVE_TITLES_FILL, "visibility", hideLive || !liveOn ? "none" : "visible");
+      map.setLayoutProperty(LIVE_TITLES_LINE, "visibility", hideLive || !liveOn ? "none" : "visible");
     }
   }
 
   function clearCompanyOverlay() {
     if (map.getSource(COMPANY_SRC)) map.getSource(COMPANY_SRC).setData(emptyFC());
+    const liveOn = !liveMaster || liveMaster.checked;
     if (map.getLayer(LIVE_TITLES_FILL)) {
-      map.setLayoutProperty(LIVE_TITLES_FILL, "visibility", "visible");
-      map.setLayoutProperty(LIVE_TITLES_LINE, "visibility", "visible");
+      map.setLayoutProperty(LIVE_TITLES_FILL, "visibility", liveOn ? "visible" : "none");
+      map.setLayoutProperty(LIVE_TITLES_LINE, "visibility", liveOn ? "visible" : "none");
     }
-    if (map.getLayer(COMPANY_FILL)) map.setPaintProperty(COMPANY_FILL, "fill-color", stateColorExpr());
-    if (map.getLayer(COMPANY_LINE)) map.setPaintProperty(COMPANY_LINE, "line-color", stateColorExpr());
+    if (map.getLayer(COMPANY_FILL)) map.setPaintProperty(COMPANY_FILL, "fill-color", TITLE_LIVE_COLOR);
+    if (map.getLayer(COMPANY_LINE)) map.setPaintProperty(COMPANY_LINE, "line-color", TITLE_LIVE_COLOR);
   }
 
   function refreshLiveTitles() {
     if (!apiStatus.live || !map.getSource(LIVE_TITLES_SRC)) return Promise.resolve();
+    if (liveMaster && !liveMaster.checked) {
+      lastLiveTitlesTruncated = false;
+      map.getSource(LIVE_TITLES_SRC).setData(emptyFC());
+      return Promise.resolve();
+    }
     const zoom = map.getZoom();
     const limit = liveTitlesLimit(zoom);
     if (!limit) {
@@ -1519,7 +1593,7 @@
       const lab = document.createElement("label");
       lab.className = "row";
       lab.innerHTML =
-        '<input type="checkbox" checked data-mineral="' +
+        '<input type="checkbox" data-mineral="' +
         m.id +
         '" />' +
         '<span class="swatch" style="background:' +
@@ -1536,6 +1610,15 @@
   }
 
   function selectedMinerals() {
+    const ids = [];
+    if (occGold && occGold.checked) ids.push("gold");
+    if (occOther && occOther.checked) {
+      MINERALS.forEach(function (m) {
+        if (m.id !== "gold") ids.push(m.id);
+      });
+    }
+    if (ids.length) return ids;
+    if (!mineralBox) return [];
     return Array.prototype.slice
       .call(mineralBox.querySelectorAll('input[type="checkbox"]'))
       .filter(function (inp) { return inp.checked; })
@@ -1842,6 +1925,8 @@
         if (!ok) return;
       }
       const props = occProps(r);
+      const types = r._mins || mineralIdsFromComm(r[4]);
+      props.fam = types.indexOf("gold") !== -1 ? "gold" : "other";
       const feat = {
         type: "Feature",
         geometry: { type: "Point", coordinates: [r[1], r[2]] },
@@ -1879,12 +1964,12 @@
     }
     return [
       "interpolate", ["linear"], ["log10", ["max", 1, ["get", "n"]]],
-      0, "#1b4d6e",
-      1, "#2a9d8f",
-      2, "#e9c46a",
-      3, "#f4a261",
-      4, "#e76f51",
-      5, "#9b2226"
+      0, "#1a3d00",
+      1, "#4a8c00",
+      2, HOLES_COLOR,
+      3, "#e6ff66",
+      4, "#f4ff99",
+      5, "#ffffff"
     ];
   }
 
@@ -1971,11 +2056,11 @@
             source: "occ",
             filter: ["has", "point_count"],
             paint: {
-              "circle-color": "#f2c14e",
+              "circle-color": occFamilyColor(),
               "circle-radius": ["step", ["get", "point_count"], 12, 25, 16, 100, 20, 500, 26],
-              "circle-opacity": 0.82,
+              "circle-opacity": 0.88,
               "circle-stroke-width": 1,
-              "circle-stroke-color": "#1b2430"
+              "circle-stroke-color": "#000000"
             }
           });
           map.addLayer({
@@ -1987,7 +2072,7 @@
               "text-field": ["get", "point_count_abbreviated"],
               "text-size": 11
             },
-            paint: { "text-color": "#1b2430" }
+            paint: { "text-color": "#000000" }
           });
           map.addLayer({
             id: "occ-point",
@@ -1995,11 +2080,15 @@
             source: "occ",
             filter: ["!", ["has", "point_count"]],
             paint: {
-              "circle-color": stateColorExpr(),
+              "circle-color": [
+                "match", ["get", "fam"],
+                "gold", OCC_GOLD_COLOR,
+                OCC_OTHER_COLOR
+              ],
               "circle-radius": 5.4,
               "circle-opacity": 0.92,
               "circle-stroke-width": 0.9,
-              "circle-stroke-color": "#0b1220"
+              "circle-stroke-color": "#000000"
             }
           });
           map.addLayer({
@@ -2008,11 +2097,15 @@
             source: "occ-sec",
             minzoom: 11,
             paint: {
-              "circle-color": stateColorExpr(),
+              "circle-color": [
+                "match", ["get", "fam"],
+                "gold", OCC_GOLD_COLOR,
+                OCC_OTHER_COLOR
+              ],
               "circle-radius": 2.1,
               "circle-opacity": 0.55,
               "circle-stroke-width": 0.4,
-              "circle-stroke-color": "#0b1220"
+              "circle-stroke-color": "#000000"
             }
           });
           map.on("mouseenter", "occ-point", function () {
@@ -2169,6 +2262,17 @@
   deadMaster.addEventListener("change", function () {
     if (deadMaster.checked) {
       deadBox.classList.remove("disabled");
+      STATES.forEach(function (s) {
+        const inp = deadBox.querySelector('input[data-state="' + s.id + '"][data-life="dead"]');
+        if (!inp || inp.disabled) return;
+        inp.checked = true;
+        addStateLayers(s.id, "dead", TITLE_DEAD_COLOR).then(function (ok) {
+          if (ok) setVisible(s.id, "dead", true);
+        }).catch(function (err) {
+          inp.checked = false;
+          log("Failed " + s.id + " dead: " + err.message);
+        });
+      });
     } else {
       deadBox.classList.add("disabled");
       deadBox.querySelectorAll('input[type="checkbox"]').forEach(function (inp) {
@@ -2178,6 +2282,7 @@
         }
       });
     }
+    updateLegend();
   });
 
   function ensureOsm(on) {
@@ -2194,19 +2299,14 @@
             id: "osm",
             type: "raster",
             source: "osm",
-            paint: { "raster-opacity": 0.55 }
+            paint: {
+              "raster-opacity": 0.28,
+              "raster-saturation": -0.75,
+              "raster-brightness-max": 0.42
+            }
           },
-          map.getStyle().layers[0] && map.getStyle().layers.length > 1
-            ? map.getStyle().layers[1].id
-            : undefined
+          map.getLayer("au-states") ? "au-states" : (map.getLayer("au-coast") ? "au-coast" : undefined)
         );
-        if (map.getLayer("osm") && map.getLayer("background")) {
-          try {
-            map.moveLayer("osm", map.getStyle().layers.find(function (l) {
-              return l.id !== "background" && l.id !== "osm";
-            })?.id);
-          } catch (e) {}
-        }
       } else {
         map.setLayoutProperty("osm", "visibility", "visible");
       }
@@ -2227,6 +2327,51 @@
     ensureOsm(osmToggle.checked);
     updateLegend();
   });
+
+  if (auOutline) {
+    auOutline.addEventListener("change", function () {
+      setLayerVisible("au-coast", auOutline.checked);
+    });
+  }
+  if (auStates) {
+    auStates.addEventListener("change", function () {
+      setLayerVisible("au-states", auStates.checked);
+    });
+  }
+  if (liveMaster) {
+    liveMaster.addEventListener("change", function () {
+      const on = liveMaster.checked;
+      if (liveBox) {
+        liveBox.querySelectorAll('input[data-life="live"]').forEach(function (inp) {
+          if (!inp.disabled) inp.checked = on;
+        });
+      }
+      if (liveTitlesUsingApi) {
+        setLayerVisible(LIVE_TITLES_FILL, on);
+        setLayerVisible(LIVE_TITLES_LINE, on);
+        applyLiveApiStateFilter(findQuery);
+        if (on) scheduleLiveTitles();
+      } else if (on) {
+        STATES.forEach(function (s) {
+          const inp = liveBox && liveBox.querySelector('input[data-state="' + s.id + '"][data-life="live"]');
+          if (!inp || inp.disabled) return;
+          addStateLayers(s.id, "live", TITLE_LIVE_COLOR).then(function (ok) {
+            if (ok) setVisible(s.id, "live", true);
+          });
+        });
+      } else {
+        STATES.forEach(function (s) { setVisible(s.id, "live", false); });
+      }
+      updateLegend();
+    });
+  }
+  if (occGold) occGold.addEventListener("change", syncOccFromFamily);
+  if (occOther) occOther.addEventListener("change", syncOccFromFamily);
+  if (railToggle && panelEl) {
+    railToggle.addEventListener("click", function () {
+      setRailOpen(!document.body.classList.contains("rail-open"));
+    });
+  }
 
   gaToggle.addEventListener("change", function () {
     ensureGa(gaToggle.checked);
@@ -2288,6 +2433,7 @@
       applyOccFilter();
     }
     updateLegend();
+    updateDemoBanner();
   });
   holesMaster.addEventListener("change", function () {
     if (holesMaster.checked) {
@@ -2300,6 +2446,7 @@
       applyHexFilter("holes");
     }
     updateLegend();
+    updateDemoBanner();
   });
   gchemMaster.addEventListener("change", function () {
     if (gchemMaster.checked) {
@@ -2315,9 +2462,9 @@
   });
 
 
-  const ASSET_V = "20260823a";
-  const VS_A_COLOR = "#3d9cf0";
-  const VS_B_COLOR = "#e83e8c";
+  const ASSET_V = "20260829a";
+  const VS_A_COLOR = "#00c8ff";
+  const VS_B_COLOR = "#ff2bd6";
   const GROUND_KEY = "xplorr.myground";
   const PACK_CAP = { title: 40, occ: 30, holes: 20, gchem: 20, report: 30 };
 
@@ -3011,8 +3158,8 @@
           }
           return;
         }
-        map.setPaintProperty(fill, "fill-color", s.color);
-        map.setPaintProperty(line, "line-color", s.color);
+        map.setPaintProperty(fill, "fill-color", titlePaintColor(life));
+        map.setPaintProperty(line, "line-color", titlePaintColor(life));
         const clauses = [];
         if (company) {
           const hs = holdersMatching(company);
@@ -3672,13 +3819,13 @@
         id: "box-sel-line",
         type: "line",
         source: "box-sel",
-        paint: { "line-color": "#3d9cf0", "line-width": 2, "line-dasharray": [2, 1] }
+        paint: { "line-color": "#f2f2f2", "line-width": 1.2, "line-dasharray": [2, 1] }
       });
       map.addLayer({
         id: "box-sel-fill",
         type: "fill",
         source: "box-sel",
-        paint: { "fill-color": "#3d9cf0", "fill-opacity": 0.08 }
+        paint: { "fill-color": "#ffffff", "fill-opacity": 0.06 }
       }, "box-sel-line");
     } else {
       map.getSource("box-sel").setData(gj);
@@ -3703,9 +3850,9 @@
     if (!packEl || !packBody) return;
     packEl.hidden = false;
     packBody.innerHTML = "<p class='note'>Collecting features in the box…</p>";
-    if (!occLoaded && !occLoading) loadOccurrences();
-    if (!holesLoaded && !holesLoading) loadHex("holes");
-    if (!gchemLoaded && !gchemLoading) loadHex("gchem");
+    if (occMaster && occMaster.checked && !occLoaded && !occLoading) loadOccurrences();
+    if (holesMaster && holesMaster.checked && !holesLoaded && !holesLoading) loadHex("holes");
+    if (gchemMaster && gchemMaster.checked && !gchemLoaded && !gchemLoading) loadHex("gchem");
     const boxStates = statesForBounds(bounds);
     const aoiJob = apiStatus.live
       ? fetchApi("/v1/aoi", { bbox: bboxParam(bounds) }, 25000).catch(function (err) {
@@ -4050,11 +4197,11 @@
             source: "reports",
             filter: ["has", "point_count"],
             paint: {
-              "circle-color": "#7ec4ff",
+              "circle-color": REPORTS_COLOR,
               "circle-radius": ["step", ["get", "point_count"], 10, 10, 14, 50, 18],
-              "circle-opacity": 0.8,
+              "circle-opacity": 0.85,
               "circle-stroke-width": 1,
-              "circle-stroke-color": "#1b2430"
+              "circle-stroke-color": "#000000"
             }
           });
           map.addLayer({
@@ -4063,7 +4210,7 @@
             source: "reports",
             filter: ["has", "point_count"],
             layout: { "text-field": ["get", "point_count_abbreviated"], "text-size": 11 },
-            paint: { "text-color": "#1b2430" }
+            paint: { "text-color": "#000000" }
           });
           map.addLayer({
             id: "rpt-point",
@@ -4071,11 +4218,11 @@
             source: "reports",
             filter: ["!", ["has", "point_count"]],
             paint: {
-              "circle-color": "#7ec4ff",
+              "circle-color": REPORTS_COLOR,
               "circle-radius": 5,
-              "circle-opacity": 0.85,
+              "circle-opacity": 0.9,
               "circle-stroke-width": 0.8,
-              "circle-stroke-color": "#0b1220"
+              "circle-stroke-color": "#000000"
             }
           });
           map.on("mouseenter", "rpt-point", function () { map.getCanvas().style.cursor = "pointer"; });
@@ -4228,6 +4375,10 @@
   map.on("click", function (e) {
     if (skipNextClick) { skipNextClick = false; return; }
     if (boxDrawing) return;
+    if (document.body.classList.contains("rail-open") && window.matchMedia && window.matchMedia("(max-width: 720px)").matches) {
+      setRailOpen(false);
+      return;
+    }
     if (openGroundMode) {
       showOpenGroundIdentify(e.lngLat);
       return;
@@ -4300,9 +4451,10 @@
   });
 
   map.on("load", function () {
+    addAustraliaBase();
     buildKindToggles();
     buildMineralToggles();
-    if (osmToggle.checked) ensureOsm(true);
+    if (osmToggle && osmToggle.checked) ensureOsm(true);
     fetch("data/overlay_manifest.json")
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (o) {
@@ -4349,9 +4501,9 @@
             initBoxTool();
             initOpenGround();
             applyGroundFromForm(false);
-            ensureReports();
             if (findQuery && findInput) runFind(findInput.value);
             updateLegend();
+            updateDemoBanner();
           }
           if (liveApi) {
             ensureApiTitleLayers();

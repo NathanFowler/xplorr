@@ -5,25 +5,64 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Xplorr</title>
   <link rel="stylesheet" href="vendor/maplibre-gl.css" />
-  <link rel="stylesheet" href="app.css?v=20260823a" />
+  <link rel="stylesheet" href="app.css?v=20260829a" />
 </head>
 <body>
+  <button type="button" id="rail-toggle" aria-expanded="false" aria-controls="panel">Layers</button>
   <aside id="panel">
     <header>
-      <h1>Xplorr <span id="api-chip" class="api-chip">Checking register…</span></h1>
-      <p class="sub">Australian mining &amp; exploration</p>
+      <h1>Xplorr <span id="api-chip" class="api-chip">Checking…</span></h1>
     </header>
-    <div class="demo-banner">Preview fill: empty fields and a few missing layers are DEMO, not real.</div>
 
-    <details class="group" open>
-      <summary>Find</summary>
-      <input type="search" id="find" placeholder="Title number, company, occurrence…" autocomplete="off" />
-      <div class="openground">
-        <button type="button" id="open-ground" aria-pressed="false">Open ground</button>
-        <p class="note">Click the map for <strong>Open ground</strong> (no live title covers that point) or <strong>Held</strong> plus the covering live titles. Uses the live national register when the chip is green; if the API is down the map says so and falls back to loaded title packs — it will not quietly call a point open. This only means no live title in our state registers — not a grant, and not parks, native title, planning, pastoral or city lots. ACT has no titles register. Share with ?open=1.</p>
-      </div>
-      <div id="find-results" hidden></div>
-      <p class="note">Click a result or the map. Compare with vs=BHP,RIO in the URL.</p>
+    <input type="search" id="find" placeholder="Title, company…" autocomplete="off" />
+    <div id="find-results" hidden></div>
+
+    <nav class="layers" aria-label="Map layers">
+      <section class="lg">
+        <h2>Base</h2>
+        <label class="row"><input type="checkbox" id="au-outline" checked /><span class="swatch line" style="--c:#f2f2f2"></span><span>Australia outline</span></label>
+        <label class="row"><input type="checkbox" id="au-states" checked /><span class="swatch line" style="--c:#444"></span><span>State lines</span></label>
+        <label class="row"><input type="checkbox" id="osm" /><span class="swatch" style="background:#555"></span><span>Streets</span></label>
+      </section>
+      <section class="lg">
+        <h2>Titles</h2>
+        <label class="row"><input type="checkbox" id="live-master" checked /><span class="swatch" style="background:#00c8ff"></span><span>Live titles</span></label>
+        <label class="row"><input type="checkbox" id="dead-master" /><span class="swatch" style="background:#666"></span><span>Dead / historic</span></label>
+      </section>
+      <section class="lg">
+        <h2>Occurrences</h2>
+        <label class="row"><input type="checkbox" id="occ-gold" /><span class="swatch round" style="background:#ffd000"></span><span>Gold</span></label>
+        <label class="row"><input type="checkbox" id="occ-other" /><span class="swatch round" style="background:#ff2bd6"></span><span>Other</span></label>
+      </section>
+      <section class="lg">
+        <h2>Drilling</h2>
+        <label class="row"><input type="checkbox" id="holes-master" /><span class="swatch" style="background:#c8ff00"></span><span>Holes</span></label>
+      </section>
+      <section class="lg">
+        <h2>Geology</h2>
+        <label class="row"><input type="checkbox" id="geo-kinds" /><span class="swatch" style="background:#7ec8c0"></span><span>Geology</span></label>
+        <input type="search" id="geo-search" placeholder="Formation / unit" autocomplete="off" />
+      </section>
+      <section class="lg">
+        <h2>Reports</h2>
+        <label class="row"><input type="checkbox" id="reports-master" /><span class="swatch round" style="background:#ff7a1a"></span><span>Catalogue</span></label>
+      </section>
+      <section class="lg">
+        <h2>Geochem</h2>
+        <label class="row"><input type="checkbox" id="gchem-master" /><span class="swatch" style="background:#c77dff"></span><span>Samples</span></label>
+      </section>
+    </nav>
+
+    <div class="tools">
+      <button type="button" id="open-ground" aria-pressed="false">Open ground</button>
+      <button type="button" id="box-tool" title="Draw a box (or shift-drag)">Box pack</button>
+    </div>
+
+    <p id="demo-banner" class="demo-banner" hidden>DEMO fill on a visible layer — not real harvest.</p>
+    <div id="legend-live" class="legend-live"></div>
+
+    <details class="more" id="more-group">
+      <summary>More</summary>
       <div class="myground">
         <h3>My ground</h3>
         <input type="text" id="ground-name" placeholder="Name (optional)" autocomplete="off" />
@@ -37,86 +76,41 @@
         </div>
         <p class="note" id="ground-status">Saved in this browser. Share with ?company=BHP or ?vs=BHP,RIO.</p>
       </div>
+      <label class="row"><input type="checkbox" id="ga-geol" /><span class="swatch" style="background:#8c7b6b"></span><span>GA surface geology</span></label>
+      <p class="note">Click the map to identify. Compare holders with vs=BHP,RIO. Open ground is not a grant — disclaimer is on the identify card.</p>
+      <footer>
+        <p>Official state titles. Geology: GA / state surveys. Occurrences: GSNSW, GSQ, GSV, MRT, NTGS, WA MINEDEX (CC BY-NC). Holes and geochem are density cells.</p>
+      </footer>
     </details>
-
-    <details class="group" open>
-      <summary>Titles</summary>
-      <label class="row"><input type="checkbox" id="osm" checked /> Streets</label>
-      <div id="live-toggles"></div>
-    </details>
-
-    <details class="group">
-      <summary>Geology</summary>
-      <label class="row"><input type="checkbox" id="ga-geol" /> GA surface geology</label>
-      <label class="row"><input type="checkbox" id="geo-kinds" /> Kind polygons</label>
-      <input type="search" id="geo-search" placeholder="Formation / unit name" autocomplete="off" />
-      <div class="kind-actions">
-        <button type="button" id="kinds-all">All</button>
-        <button type="button" id="kinds-none">None</button>
-      </div>
-      <div id="kind-toggles" class="disabled"></div>
-    </details>
-
-    <details class="group" open>
-      <summary>Commodities</summary>
-      <p class="note">Turns on mines and occurrences. Gold (and other types) show named and sized sites first; unnamed historic workings appear when you zoom in.</p>
-      <div class="kind-actions">
-        <button type="button" id="mins-all">All</button>
-        <button type="button" id="mins-none">None</button>
-      </div>
-      <div id="mineral-toggles"></div>
-    </details>
-
-    <details class="group" id="more-group">
-      <summary>More</summary>
-      <h3>Occurrences</h3>
-      <label class="row"><input type="checkbox" id="occ-master" checked /> Show points</label>
-      <div id="occ-toggles"></div>
-      <p class="note">Named / sized sites first. Unnamed historic workings from zoom 11. SA points are a small DEMO set. WA MINEDEX is CC BY-NC.</p>
-
-      <h3>Drillholes</h3>
-      <label class="row"><input type="checkbox" id="holes-master" /> Density hex (~20 km)</label>
-      <div id="holes-toggles" class="disabled"></div>
-      <div class="legend" id="holes-legend" hidden>
-        <span>few</span>
-        <span class="ramp holes"></span>
-        <span>many</span>
-      </div>
-      <p class="note">Click a cell for depth, year, type, operator. QLD cells are DEMO.</p>
-
-      <h3>Geochem</h3>
-      <label class="row"><input type="checkbox" id="gchem-master" /> Sample density hex</label>
-      <div id="gchem-toggles" class="disabled"></div>
-      <div class="legend" id="gchem-legend" hidden>
-        <span>few</span>
-        <span class="ramp gchem"></span>
-        <span>many</span>
-      </div>
-
-      <h3>Reports</h3>
-      <label class="row"><input type="checkbox" id="reports-master" /> Joined reports (title centroids)</label>
-      <p class="note">Off by default. Only reports located via a real tenement join. SA catalogue is empty (WAF 403).</p>
-
-      <h3>Dead / historic</h3>
-      <label class="row"><input type="checkbox" id="dead-master" /> Enable dead layers</label>
-      <div id="dead-toggles" class="disabled"></div>
-    </details>
-
-    <section class="legend-box">
-      <h2>Legend</h2>
-      <div id="legend-live"></div>
-    </section>
 
     <p id="status-line" class="status-line">Loading…</p>
     <pre id="status" hidden></pre>
-    <footer>
-      <p>Official state titles. Geology: GA / state surveys. Occurrences: GSNSW, GSQ, GSV, MRT, NTGS, WA MINEDEX (CC BY-NC). Holes and geochem are density cells.</p>
-    </footer>
+
+    <!-- Hidden hosts so existing layer/filter logic keeps working. -->
+    <div id="compat" hidden>
+      <input type="checkbox" id="occ-master" />
+      <div id="live-toggles"></div>
+      <div id="dead-toggles"></div>
+      <div id="kind-toggles" class="disabled"></div>
+      <div id="mineral-toggles"></div>
+      <div id="occ-toggles"></div>
+      <div id="holes-toggles" class="disabled"></div>
+      <div id="gchem-toggles" class="disabled"></div>
+      <div class="kind-actions">
+        <button type="button" id="kinds-all">All</button>
+        <button type="button" id="kinds-none">None</button>
+        <button type="button" id="mins-all">All</button>
+        <button type="button" id="mins-none">None</button>
+      </div>
+      <div class="legend" id="holes-legend" hidden>
+        <span>few</span><span class="ramp holes"></span><span>many</span>
+      </div>
+      <div class="legend" id="gchem-legend" hidden>
+        <span>few</span><span class="ramp gchem"></span><span>many</span>
+      </div>
+    </div>
   </aside>
   <div id="map"></div>
-  <div id="map-tools">
-    <button type="button" id="box-tool" title="Draw a box (or shift-drag)">Box pack</button>
-  </div>
   <div id="draw-box" hidden></div>
   <aside id="pack" hidden>
     <header>
@@ -127,6 +121,6 @@
   </aside>
   <div id="popup" class="hidden"></div>
   <script src="vendor/maplibre-gl.js"></script>
-  <script src="app.js?v=20260823a"></script>
+  <script src="app.js?v=20260829a"></script>
 </body>
 </html>
