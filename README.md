@@ -79,11 +79,15 @@ Same hex size (`data/geochem_hex.geojson`, 2,569 cells) with the same style of r
 
 Click a cell for a sample table built only from real columns: example `sample_ids`, element names (`top_commodities` when present), type %, year, depth min/max/median. Assay **values / units / methods** are shown only if `GET /v1/geochem?bbox=` exists on the live API. The public OpenAPI (2026-09-09) does not expose that path — the UI says so and does not invent numbers. **Download CSV** on the hex card and in Box pack writes those same real rows for the cell or AOI bbox.
 
+**Element heats** (Au, Cu, Pb, Zn, Ag, Fe, Ni, Co, U, Li) use hex cells whose `top_commodities` contains that symbol. Weight is the real hex sample count `n`, not an interpolated assay. A heat needs at least 40 such cells; Li is below that and shows an empty state. VIC place names in `top_commodities` are not treated as elements.
+
 Harvest point counts in the overlay manifest (not in this repo as points): NSW 2.4M, NT 1.1M, TAS 0.79M, SA 0.46M, VIC 56k. No QLD or WA geochem pack in the harvest.
+
+The droplet API lives **outside this repo**. Drop-in routes and the exact files to patch are in [`api/README.md`](api/README.md) (`GET /v1/geochem`, `GET /v1/geophysics`). Until those are mounted the map keeps hex / GA fallbacks.
 
 ## Geophysics
 
-Rail toggles for **Magnetics / Gravity / Radiometrics** load Geoscience Australia GADDS WMS survey **footprints** (`gadds:geophysical_datasets_*` at `https://services.ga.gov.au/gis/geophysical-surveys/wms`). These are official coverage polygons, not imagery drapes. MinView WMS rasters are not wired. The live PostGIS API has no `/v1/geophysics` path, so in-house footprints are not queried.
+Rail toggles for **Magnetics / Gravity / Radiometrics** load Geoscience Australia GADDS WMS survey **footprints** (`gadds:geophysical_datasets_*` at `https://services.ga.gov.au/gis/geophysical-surveys/wms`). These are official coverage polygons, not imagery drapes. MinView WMS rasters are not wired. Box pack asks `/v1/geophysics` first, then GA GetFeatureInfo. The public API still 404s that path until the droplet patch in `api/` is deployed.
 
 ## Omitted on purpose
 
@@ -93,14 +97,18 @@ Rail toggles for **Magnetics / Gravity / Radiometrics** load Geoscience Australi
 
 ## Usefulness (2026-08-20)
 
-Five map-side tools. Harvest report catalogues stay out of this repo; only a slim join index and title-centroid overlay are shipped.
+Map-side tools. Harvest report catalogues stay out of this repo; only a slim join index and title-centroid overlay are shipped.
 
 1. **Hex click-through** — hole/geochem identify cards add report links (title, year, official portal URL). WAMEX rows use `ReportDetails?ANumber=` (the harvest stored only the portal home). NSW DIGS keeps `/report/{id}` from the harvest; GSQ keeps the CKAN dataset UUID (or `/data/report/cr…` when the id is a CR number). Hole IDs stay as text unless a real portal URL exists. Joins use tenement IDs extracted from report metadata against live titles already on the map, plus distinctive company tokens vs hex operators / title holders. DEMO cells get no links.
-2. **Box pack** — Box pack button or shift-drag a rectangle. Prefers `/v1/aoi` for title/occurrence/hole counts (hole features are a 25-collar sample, not millions of points). Static hex/report layers remain until those are tiled. Open-ground in the pack is a point sample via `/v1/open-ground`.
-3. **My ground** — pin a company and/or title numbers (optional name). Persists in `localStorage`. Share `?company=BHP` or `?vs=BHP,RIO`. No accounts, no PAT.
-4. **Reports layer** — off by default. Clustered points at **title centroids after a tenement join**. Catalogues with no geometry and no join are not scattered. SA reports are empty (SARIG CSW WAF 403).
-5. **Company vs company** — `?vs=BHP,RIO` colours two holder sets and leaves identify working. Token match so `RIO` is Rio Tinto, not Marion.
-6. **Open ground** — `GET /v1/open-ground` (fallback: client-side live-title index). Find has an Open ground control (`?open=1` or `?open=lng,lat`). Click a point for **Open ground** or **Held** plus covering live titles. Box pack adds a point-sample vacant vs held count — not a vacant cadastral polygon. This is not a grant, and not parks / native title / planning / pastoral / city lots. ACT has no titles register. There is no for-sale list.
+2. **Box pack (AOI v2)** — Box pack button or shift-drag a rectangle. Prefers `/v1/aoi` for title/occurrence/hole counts (hole features are a 25-collar sample, not millions of points). Also lists geochem hexes + CSV, joined reports (catalogue only — files not hosted), and geophysics survey footprints. Open-ground in the pack is a point sample via `/v1/open-ground`.
+3. **Hole → geochem** — Hole hex or identify collar looks up hex cells that share a sample/hole ID, or the same ~20 km cell, and `/v1/geochem?hole_id=` when that column exists. No join is invented when keys are absent.
+4. **Report catalogue search** — Reports rail: company / tenement / year against `reports_index` metadata. Hits deep-link to DIGS / WAMEX / GSQ / GEMIS / MRT / GSV. Every row is marked **file not hosted**.
+5. **Apply / lease** — Open-ground cards link the **state** titles portal for that point (NSW TMS, QLD authorities, WA MTO, SA, NT, TAS, VIC). There is no national vacant listing.
+7. **Gaps + MinView parity** — More → Gaps (QLD holes 0, report files not hosted, SA reports empty, …). [`parity.html`](parity.html) is the match/lag checklist vs NSW MinView.
+8. **My ground** — pin a company and/or title numbers (optional name). Persists in `localStorage`. Share `?company=BHP` or `?vs=BHP,RIO`. No accounts, no PAT.
+9. **Reports layer** — off by default. Clustered points at **title centroids after a tenement join**. Catalogues with no geometry and no join are not scattered. SA reports are empty (SARIG CSW WAF 403).
+10. **Company vs company** — `?vs=BHP,RIO` colours two holder sets and leaves identify working. Token match so `RIO` is Rio Tinto, not Marion.
+11. **Open ground** — `GET /v1/open-ground` (fallback: client-side live-title index). Find has an Open ground control (`?open=1` or `?open=lng,lat`). Click a point for **Open ground** or **Held** plus covering live titles. Box pack adds a point-sample vacant vs held count — not a vacant cadastral polygon. This is not a grant, and not parks / native title / planning / pastoral / city lots. ACT has no titles register. There is no for-sale list.
 
 Viewport titles load on `moveend` from `/v1/titles?bbox=` (zoom-gated; the continent is not requested at `limit=2000`). Map click identify uses `/v1/identify` unless a geology or hex layer is hit first.
 
@@ -110,6 +118,8 @@ Viewport titles load on `moveend` from `/v1/titles?bbox=` (zoom-gated; the conti
 python3 tools/test_live_api.py
 python3 tools/test_portal_links.py
 python3 tools/test_geology_age.py
+python3 tools/test_bwave.py
+python3 tools/test_api_patch.py
 ```
 
 Asserts health, AL7 held (Zeolite Australia), Sydney open, and Find BHP against the register. Catalogue checks hit NSW DIGS + WAMEX ReportDetails + GSQ `package_show`. Serve this folder (`python3 -m http.server 8765`) to click the same points in the map.

@@ -147,7 +147,8 @@ footer { margin-top: 12px; font-size: 0.68rem; color: #888; line-height: 1.4; }
 }
 .demo-banner[hidden] { display: none; }
 
-#find, #layer-filter, #geo-search, #ground-name, #ground-company, #ground-vs, #ground-titles {
+#find, #layer-filter, #geo-search, #ground-name, #ground-company, #ground-vs, #ground-titles,
+#rpt-company, #rpt-tenement, #rpt-year {
   width: 100%;
   margin: 0 0 6px;
   padding: 6px 8px;
@@ -162,7 +163,8 @@ footer { margin-top: 12px; font-size: 0.68rem; color: #888; line-height: 1.4; }
 #geo-search { margin: 3px 0 0; }
 #geo-search[hidden] { display: none; }
 #find:focus, #layer-filter:focus, #geo-search:focus,
-#ground-name:focus, #ground-company:focus, #ground-vs:focus, #ground-titles:focus {
+#ground-name:focus, #ground-company:focus, #ground-vs:focus, #ground-titles:focus,
+#rpt-company:focus, #rpt-tenement:focus, #rpt-year:focus {
   outline: 1px solid #aaa;
 }
 #find-results { max-height: 220px; overflow: auto; margin: 0 0 6px; }
@@ -332,6 +334,31 @@ footer { margin-top: 12px; font-size: 0.68rem; color: #888; line-height: 1.4; }
 .popup-export:disabled { color: #666; cursor: default; }
 .geo-age { margin-left: 2px; }
 .pack-export { margin: 8px 0; }
+#gchem-heats { margin: 2px 0 0; }
+#gchem-heats .row { padding-left: 18px; }
+#gchem-heat-empty[hidden] { display: none; }
+#rpt-company, #rpt-tenement, #rpt-year { margin: 3px 0 0; font-size: 0.72rem; padding: 4px 8px; }
+#rpt-search {
+  width: 100%;
+  margin: 6px 0 0;
+  background: #000;
+  color: #fff;
+  border: 1px solid #222;
+  font: inherit;
+  font-size: 0.72rem;
+  padding: 5px 8px;
+  cursor: pointer;
+}
+#rpt-search:hover { background: #111; }
+#rpt-results { max-height: 180px; overflow: auto; margin: 4px 0 0; }
+#rpt-results[hidden] { display: none; }
+.gaps { margin-top: 12px; }
+.gaps ul { margin: 0; padding: 0; list-style: none; }
+.gaps li { font-size: 0.68rem; color: #aaa; line-height: 1.35; margin: 6px 0; }
+.gaps li strong { display: block; color: #fff; font-weight: 650; }
+.gaps .gap-st { color: #888; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.58rem; }
+.gaps a { color: #fff; }
+.file-not-hosted { color: #888; font-size: 0.62rem; }
 
 #draw-box {
   position: fixed;
