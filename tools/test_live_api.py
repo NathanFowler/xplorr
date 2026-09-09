@@ -101,6 +101,16 @@ def main() -> int:
     sample_n = len(((aoi.get("holes_sample") or {}).get("features") or []))
     expect(sample_n <= 25, "aoi holes_sample capped at 25", failures)
 
+    # Point assays / geophysics footprints are not on the public OpenAPI yet.
+    for path in ("/v1/geochem", "/v1/geophysics"):
+        try:
+            extra = get(path, {"bbox": "150.5,-31.4,150.7,-31.3", "limit": "5"})
+            print("  note %s returned keys %s" % (path, list(extra["body"])[:8]))
+        except urllib.error.HTTPError as exc:
+            expect(exc.code == 404, path + " is absent (404) — UI uses hex/WMS fallback", failures)
+        except Exception as exc:
+            print("  note %s not callable: %s" % (path, exc))
+
     if failures:
         print("\n%d failed" % len(failures))
         return 1

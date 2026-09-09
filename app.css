@@ -269,7 +269,7 @@ footer { margin-top: 12px; font-size: 0.68rem; color: #888; line-height: 1.4; }
   border-radius: 0;
   padding: 10px 12px;
   box-shadow: none !important;
-  max-width: 360px;
+  max-width: 420px;
 }
 .maplibregl-popup-tip { border-top-color: #222 !important; }
 .maplibregl-popup-anchor-bottom .maplibregl-popup-tip { border-top-color: #222 !important; }
@@ -304,6 +304,34 @@ footer { margin-top: 12px; font-size: 0.68rem; color: #888; line-height: 1.4; }
 .popup-id { font-size: 0.72rem; color: #aaa; margin: 2px 0; }
 .popup-pin { margin-top: 8px; }
 .popup-more { font-size: 0.68rem; color: #888; margin-top: 6px; line-height: 1.35; }
+.popup-table-wrap { margin-top: 8px; max-height: 180px; overflow: auto; }
+.popup-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.68rem;
+}
+.popup-table th,
+.popup-table td {
+  text-align: left;
+  padding: 2px 4px 2px 0;
+  border-bottom: 1px solid #222;
+  vertical-align: top;
+}
+.popup-table th { color: #888; font-weight: 600; }
+.popup-export {
+  margin-top: 8px;
+  background: #000;
+  color: #fff;
+  border: 1px solid #333;
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 0.68rem;
+  cursor: pointer;
+}
+.popup-export:hover { border-color: #666; }
+.popup-export:disabled { color: #666; cursor: default; }
+.geo-age { margin-left: 2px; }
+.pack-export { margin: 8px 0; }
 
 #draw-box {
   position: fixed;
