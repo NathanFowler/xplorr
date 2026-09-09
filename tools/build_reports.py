@@ -252,11 +252,23 @@ def load_hexes():
 
 
 def report_url(state, rec):
+    if state == "wa":
+        a = rec.get("anumber")
+        if a is not None and str(a).strip() != "":
+            return f"https://wamex.dmp.wa.gov.au/Wamex/Search/ReportDetails?ANumber={a}"
     u = rec.get("url")
     if isinstance(u, str) and u.startswith("http"):
+        if state == "wa" and u.rstrip("/").lower() in {
+            "https://wamex.dmp.wa.gov.au/wamex",
+            "http://wamex.dmp.wa.gov.au/wamex",
+        }:
+            return ""
         return u
     if state == "qld" and rec.get("id"):
-        return f"https://geoscience.data.qld.gov.au/data/dataset/{rec['id']}"
+        rid = str(rec["id"])
+        if rid.lower().startswith("cr"):
+            return f"https://geoscience.data.qld.gov.au/data/report/{rid}"
+        return f"https://geoscience.data.qld.gov.au/data/dataset/{rid}"
     return ""
 
 
