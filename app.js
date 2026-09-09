@@ -1153,7 +1153,7 @@
   }
 
   function escapeHtml(s) {
-    return s
+    return String(s == null ? "" : s)
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
@@ -3543,7 +3543,7 @@
   });
 
 
-  const ASSET_V = "20260909a";
+  const ASSET_V = "20260909b";
   const VS_A_COLOR = "#00c8ff";
   const VS_B_COLOR = "#ff2bd6";
   const GROUND_KEY = "xplorr.myground";
@@ -4170,8 +4170,12 @@
     identifyGp(lngLat);
     let gchemRows = isGchem ? geochemHexRows(props) : [];
     if (isGchem && !isDemoFlag(props.demo)) {
-      fillGeochemTable("popup-gchem", gchemRows, "Hex-level harvest fields only — waiting on /v1/geochem for point assays.");
-      bindGeochemCsv("popup-gchem", "xplorr-geochem-hex.csv", function () { return gchemRows; });
+      try {
+        fillGeochemTable("popup-gchem", gchemRows, "Hex-level harvest fields only — waiting on /v1/geochem for point assays.");
+        bindGeochemCsv("popup-gchem", "xplorr-geochem-hex.csv", function () { return gchemRows; });
+      } catch (err) {
+        log("Geochem table: " + ((err && err.message) || err));
+      }
       fetchGeochemApi(hexBboxParam(props)).then(function (got) {
         if (got.ok && got.rows.length) {
           gchemRows = got.rows.map(function (r) { r.source = "api"; return r; });
