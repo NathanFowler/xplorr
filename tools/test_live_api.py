@@ -101,6 +101,20 @@ def main() -> int:
     sample_n = len(((aoi.get("holes_sample") or {}).get("features") or []))
     expect(sample_n <= 25, "aoi holes_sample capped at 25", failures)
 
+    # Point assays / footprints: 404 until the droplet mounts api/routes_geochem_geophysics.py.
+    for path in ("/v1/geochem", "/v1/geophysics"):
+        try:
+            extra = get(path, {"bbox": "150.5,-31.4,150.7,-31.3", "limit": "5"})
+            body = extra["body"]
+            expect(body.get("type") == "FeatureCollection", path + " returns GeoJSON when present", failures)
+            expect(isinstance(body.get("features"), list), path + " features is a list", failures)
+            print("  note %s live · %s features · available=%s" % (
+                path, len(body.get("features") or []), body.get("available")))
+        except urllib.error.HTTPError as exc:
+            expect(exc.code == 404, path + " still 404 — UI keeps hex/WMS fallback (droplet patch not deployed)", failures)
+        except Exception as exc:
+            print("  note %s not callable: %s" % (path, exc))
+
     if failures:
         print("\n%d failed" % len(failures))
         return 1

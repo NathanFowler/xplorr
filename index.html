@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Xplorr</title>
   <link rel="stylesheet" href="vendor/maplibre-gl.css" />
-  <link rel="stylesheet" href="app.css?v=20260829g" />
+  <link rel="stylesheet" href="app.css?v=20260909d" />
 </head>
 <body>
   <button type="button" id="rail-toggle" aria-expanded="false" aria-controls="panel">Layers</button>
@@ -14,7 +14,7 @@
       <h1>Xplorr <span id="api-chip" class="api-chip">Checking…</span></h1>
     </header>
 
-    <input type="search" id="find" placeholder="Title, company…" autocomplete="off" />
+    <input type="search" id="find" placeholder="Title, company, report…" autocomplete="off" />
     <div id="find-results" hidden></div>
     <input type="search" id="layer-filter" placeholder="Filter layers…" autocomplete="off" />
 
@@ -48,18 +48,36 @@
         <h2>Drilling</h2>
         <label class="row" data-keys="holes drilling collars density"><input type="checkbox" id="holes-master" /><span class="swatch" style="background:#c8ff00"></span><span>Holes</span></label>
       </section>
-      <section class="lg" data-keys="geology rock unit formation">
+      <section class="lg" data-keys="geology rock unit formation quaternary basement cover">
         <h2>Geology</h2>
         <label class="row" data-keys="geology kinds rock unit formation"><input type="checkbox" id="geo-kinds" /><span class="swatch" style="background:#7ec8c0"></span><span>Geology</span></label>
+        <label class="row geo-age" data-keys="quaternary cover sediments alluvium regolith" hidden><input type="checkbox" id="geo-cover" checked /><span class="swatch" style="background:#ffe08a"></span><span>Quaternary / cover</span></label>
+        <label class="row geo-age" data-keys="basement non-quaternary bedrock" hidden><input type="checkbox" id="geo-basement" checked /><span class="swatch" style="background:#7b5ea7"></span><span>Basement</span></label>
         <input type="search" id="geo-search" placeholder="Formation / unit" autocomplete="off" hidden />
+        <p class="note geo-age-note" hidden>Cover = alluvium / other_regolith, or unit names with Q… / CZ… codes or “Quaternary”. No age in VIC/SA/TAS/QLD names stays unclassified and shows only when both are on. WA/ACT have no kind polygons.</p>
       </section>
-      <section class="lg" data-keys="reports catalogue wamex">
+      <section class="lg" data-keys="reports catalogue wamex digs gsq">
         <h2>Reports</h2>
         <label class="row" data-keys="reports catalogue wamex"><input type="checkbox" id="reports-master" /><span class="swatch round" style="background:#ff7a1a"></span><span>Catalogue</span></label>
+        <input type="search" id="rpt-company" placeholder="Company" autocomplete="off" />
+        <input type="search" id="rpt-tenement" placeholder="Tenement — e.g. EL8694" autocomplete="off" />
+        <input type="search" id="rpt-year" placeholder="Year" inputmode="numeric" autocomplete="off" />
+        <button type="button" id="rpt-search">Search catalogue</button>
+        <div id="rpt-results" hidden></div>
+        <p class="note">Metadata + official portal pages. Files are not hosted.</p>
       </section>
-      <section class="lg" data-keys="geochem samples assays">
+      <section class="lg" data-keys="geochem samples assays gold copper anomaly heat">
         <h2>Geochem</h2>
         <label class="row" data-keys="geochem samples assays"><input type="checkbox" id="gchem-master" /><span class="swatch" style="background:#c77dff"></span><span>Samples</span></label>
+        <div id="gchem-heats"></div>
+        <p id="gchem-heat-empty" class="note" hidden></p>
+      </section>
+      <section class="lg" data-keys="geophysics magnetics gravity radiometrics survey footprints">
+        <h2>Geophysics</h2>
+        <label class="row" data-keys="magnetics magnetic survey footprints"><input type="checkbox" id="gp-magnetic" /><span class="swatch" style="background:#5dade2"></span><span>Magnetics</span></label>
+        <label class="row" data-keys="gravity survey footprints"><input type="checkbox" id="gp-gravity" /><span class="swatch" style="background:#f2c14e"></span><span>Gravity</span></label>
+        <label class="row" data-keys="radiometrics radiometric survey footprints"><input type="checkbox" id="gp-radiometric" /><span class="swatch" style="background:#c77dff"></span><span>Radiometrics</span></label>
+        <p class="note">GA GADDS survey footprints (not imagery). MinView WMS drapes are not wired. In-house footprints use /v1/geophysics when the droplet patch is live.</p>
       </section>
       <section class="lg lg-streets" data-keys="streets osm basemap">
         <label class="row" data-keys="streets osm roads basemap"><input type="checkbox" id="osm" /><span class="swatch" style="background:#555"></span><span>Streets</span></label>
@@ -90,9 +108,14 @@
         <p class="note" id="ground-status">Saved in this browser. Share with ?company=BHP or ?vs=BHP,RIO.</p>
       </div>
       <label class="row"><input type="checkbox" id="ga-geol" /><span class="swatch" style="background:#8c7b6b"></span><span>GA surface geology</span></label>
-      <p class="note">Click the map to identify. Compare holders with vs=BHP,RIO. Open ground is not a grant — disclaimer is on the identify card.</p>
+      <div class="gaps" id="gaps-panel">
+        <h3>Gaps</h3>
+        <ul id="gaps-list"></ul>
+        <p class="note"><a href="parity.html">MinView parity checklist</a> — match / lag, not a clone.</p>
+      </div>
+      <p class="note">Click the map to identify. Compare holders with vs=BHP,RIO. Open ground is not a grant — apply / lease links go to the state portal for that point. Disclaimer is on the identify card.</p>
       <footer>
-        <p>Official state titles. Land: ABARES / ACLUMP tenure raster and NNTT native title / ILUA (CC BY 4.0). Geology: GA / state surveys. Occurrences: GSNSW, GSQ, GSV, MRT, NTGS, WA MINEDEX (CC BY-NC). Holes and geochem are density cells.</p>
+        <p>Official state titles. Land: ABARES / ACLUMP tenure raster and NNTT native title / ILUA (CC BY 4.0). Geology: GA / state surveys. Geophysics footprints: GA GADDS WMS. Occurrences: GSNSW, GSQ, GSV, MRT, NTGS, WA MINEDEX (CC BY-NC). Holes and geochem are density cells; assays only when the live API returns them.</p>
       </footer>
     </details>
 
@@ -139,6 +162,6 @@
   </aside>
   <div id="popup" class="hidden"></div>
   <script src="vendor/maplibre-gl.js"></script>
-  <script src="app.js?v=20260829g"></script>
+  <script src="app.js?v=20260909c"></script>
 </body>
 </html>
