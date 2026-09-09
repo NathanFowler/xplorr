@@ -1316,35 +1316,43 @@
 
   function applyGchemHeats() {
     const emptyEl = document.getElementById("gchem-heat-empty");
-    const selected = selectedGchemHeats();
-    if (!selected.length) {
-      GCHEM_ELEMENTS.forEach(function (spec) {
-        const lid = "gchem-heat-" + spec.id;
-        if (map.getLayer(lid)) map.setLayoutProperty(lid, "visibility", "none");
-      });
-      if (emptyEl) { emptyEl.hidden = true; emptyEl.textContent = ""; }
-      return;
-    }
     const job = gchemLoaded ? Promise.resolve() : loadHex("gchem");
     job.then(function () {
       ensureGchemHeatLayers();
       const counts = gchemHeatCounts();
       const notes = [];
       const heatFeats = [];
-      selected.forEach(function (id) {
-        const spec = gchemElementSpec(id);
-        const n = (counts[id] && counts[id].hexes) || 0;
-        const lid = "gchem-heat-" + id;
-        if (n < GCHEM_HEAT_MIN_HEXES) {
+      GCHEM_ELEMENTS.forEach(function (spec) {
+        const n = (counts[spec.id] && counts[spec.id].hexes) || 0;
+        const inp = document.getElementById("gchem-heat-" + spec.id);
+        const lab = inp && inp.closest ? inp.closest(".row") : null;
+        const text = lab && lab.querySelector("span:last-child");
+        const thin = n < GCHEM_HEAT_MIN_HEXES;
+        if (text) {
+          text.textContent = thin
+            ? spec.label + " · " + n + " hexes — no heat"
+            : spec.label + " heat · " + n + " hexes";
+        }
+        if (inp) inp.title = thin
+          ? n + " hexes mention " + spec.label + " — below the " + GCHEM_HEAT_MIN_HEXES +
+            "-cell density needed for a heat. No surface was interpolated."
+          : n.toLocaleString() + " hex cells mention " + spec.label + " (weight = sample count, not assay values).";
+        const lid = "gchem-heat-" + spec.id;
+        const on = inp && inp.checked;
+        if (on && thin) {
           if (map.getLayer(lid)) map.setLayoutProperty(lid, "visibility", "none");
-          notes.push((spec ? spec.label : id) + " · " + n + " hex" + (n === 1 ? "" : "es") +
+          notes.push(spec.label + " · " + n + " hex" + (n === 1 ? "" : "es") +
             " mention this element — below the " + GCHEM_HEAT_MIN_HEXES +
             "-cell density needed for a heat. No surface was interpolated.");
           return;
         }
-        const part = gchemHeatGJ(id);
-        part.features.forEach(function (f) { heatFeats.push(f); });
-        if (map.getLayer(lid)) map.setLayoutProperty(lid, "visibility", "visible");
+        if (on) {
+          const part = gchemHeatGJ(spec.id);
+          part.features.forEach(function (f) { heatFeats.push(f); });
+          if (map.getLayer(lid)) map.setLayoutProperty(lid, "visibility", "visible");
+        } else if (map.getLayer(lid)) {
+          map.setLayoutProperty(lid, "visibility", "none");
+        }
       });
       if (map.getSource(GCHEM_HEAT_SRC)) {
         map.getSource(GCHEM_HEAT_SRC).setData({ type: "FeatureCollection", features: heatFeats });
@@ -1353,6 +1361,7 @@
         emptyEl.hidden = !notes.length;
         emptyEl.textContent = notes.join(" ");
       }
+      if (notes.length) log(notes[0]);
     });
   }
 
@@ -5624,6 +5633,9 @@
     if (holesMaster && holesMaster.checked && !holesLoaded && !holesLoading) {
       void withLayerBusy("Loading drilling…", null, function () { return loadHex("holes"); });
     }
+    if (!holesLoaded && !holesLoading) {
+      void withLayerBusy("Loading drilling…", null, function () { return loadHex("holes"); });
+    }
     if (!gchemLoaded && !gchemLoading) {
       void withLayerBusy("Loading samples…", null, function () { return loadHex("gchem"); });
     }
@@ -5652,7 +5664,7 @@
       }
       return fetchGaSurveys(bounds);
     }).catch(function () { return fetchGaSurveys(bounds); });
-    Promise.all([ensureLiveStates(boxStates), ensureReports(), aoiJob, openJob, gpJob, loadHex("gchem")]).then(function (results) {
+    Promise.all([ensureLiveStates(boxStates), ensureReports(), aoiJob, openJob, gpJob, loadHex("gchem"), loadHex("holes")]).then(function (results) {
       const aoi = results[2];
       const openSample = results[3];
       const gpSurveys = results[4] || [];
