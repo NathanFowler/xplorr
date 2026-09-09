@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Xplorr · MinView parity</title>
+  <link rel="stylesheet" href="app.css?v=20260909d" />
+  <style>
+    body { background: #000; color: #fff; margin: 0; }
+    main { max-width: 860px; margin: 0 auto; padding: 28px 18px 48px; }
+    h1 { font-size: 1rem; margin: 0 0 8px; }
+    h1 a { color: #fff; text-decoration: none; }
+    .lead { color: #888; font-size: 0.78rem; line-height: 1.45; margin: 0 0 18px; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+    th, td { text-align: left; padding: 8px 8px 8px 0; border-bottom: 1px solid #222; vertical-align: top; }
+    th { color: #888; font-weight: 600; font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.06em; }
+    .st { font-size: 0.62rem; letter-spacing: 0.06em; text-transform: uppercase; color: #888; }
+    .st.match { color: #c8ff00; }
+    .st.partial { color: #f2c14e; }
+    .st.lag { color: #ff7a1a; }
+    .st.extra { color: #00c8ff; }
+    .st.gap { color: #888; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1><a href="index.html">Xplorr</a> · MinView parity</h1>
+    <p class="lead">
+      Honest match / lag against NSW MinView. This is not a MinView clone and not a claim that
+      every MinView raster or file is here. Status is from the harvest + public API as of 2026-09-09.
+    </p>
+    <table>
+      <thead>
+        <tr><th>Layer</th><th>MinView</th><th>Xplorr</th><th>Status</th></tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </main>
+  <script>
+    const ROWS = [
+      ["Live mineral titles", "NSW titles", "National live register via /v1/titles", "match"],
+      ["Mineral occurrences", "NSW sites", "National occ pack (WA BY-NC; SA DEMO)", "match"],
+      ["Drillholes", "NSW collars", "National hex density; QLD = 0 harvested", "lag"],
+      ["Geochem samples", "NSW point assays", "Hex aggregates; point assays wait on /v1/geochem", "lag"],
+      ["Geophysics imagery", "Statewide rasters", "GA survey footprints only — no MinView WMS drape", "lag"],
+      ["Exploration reports", "DIGS catalogue + files", "National catalogue links; files not hosted", "lag"],
+      ["Geology", "NSW detailed units", "State kinds + GA WMTS; WA/ACT kinds absent", "partial"],
+      ["Open / vacant ground", "Not a vacant listing", "No-live-title point check + state apply portals", "extra"],
+      ["Company vs company", "Not offered", "?vs= holder compare", "extra"]
+    ];
+    document.getElementById("rows").innerHTML = ROWS.map(function (r) {
+      return "<tr><td>" + r[0] + "</td><td>" + r[1] + "</td><td>" + r[2] +
+        "</td><td class=\"st " + r[3] + "\">" + r[3] + "</td></tr>";
+    }).join("");
+  </script>
+</body>
+</html>
