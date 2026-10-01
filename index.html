@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Xplorr</title>
   <link rel="stylesheet" href="vendor/maplibre-gl.css" />
-  <link rel="stylesheet" href="app.css?v=20260909d" />
+  <link rel="stylesheet" href="app.css?v=20260921a" />
 </head>
 <body>
   <button type="button" id="rail-toggle" aria-expanded="false" aria-controls="panel">Layers</button>
@@ -53,8 +53,10 @@
         <label class="row" data-keys="geology kinds rock unit formation"><input type="checkbox" id="geo-kinds" /><span class="swatch" style="background:#7ec8c0"></span><span>Geology</span></label>
         <label class="row geo-age" data-keys="quaternary cover sediments alluvium regolith" hidden><input type="checkbox" id="geo-cover" checked /><span class="swatch" style="background:#ffe08a"></span><span>Quaternary / cover</span></label>
         <label class="row geo-age" data-keys="basement non-quaternary bedrock" hidden><input type="checkbox" id="geo-basement" checked /><span class="swatch" style="background:#7b5ea7"></span><span>Basement</span></label>
+        <label class="row" data-keys="inferred basement under cover solid geology layered"><input type="checkbox" id="geo-under-cover" /><span class="swatch" style="background:#c4a574"></span><span>Basement under cover</span></label>
         <input type="search" id="geo-search" placeholder="Formation / unit" autocomplete="off" hidden />
         <p class="note geo-age-note" hidden>Cover = alluvium / other_regolith, or unit names with Q… / CZ… codes or “Quaternary”. No age in VIC/SA/TAS/QLD names stays unclassified and shows only when both are on. WA/ACT have no kind polygons.</p>
+        <p class="note">Basement under cover is GA Layered Geology (Mesozoic–Pre-Neoproterozoic time slices) — inferred solid geology with Cenozoic cover removed. National where the service has data.</p>
       </section>
       <section class="lg" data-keys="reports catalogue wamex digs gsq">
         <h2>Reports</h2>
@@ -72,12 +74,23 @@
         <div id="gchem-heats"></div>
         <p id="gchem-heat-empty" class="note" hidden></p>
       </section>
-      <section class="lg" data-keys="geophysics magnetics gravity radiometrics survey footprints">
+      <section class="lg" data-keys="geophysics magnetics gravity radiometrics survey footprints imagery tmi rtp kthu">
         <h2>Geophysics</h2>
-        <label class="row" data-keys="magnetics magnetic survey footprints"><input type="checkbox" id="gp-magnetic" /><span class="swatch" style="background:#5dade2"></span><span>Magnetics</span></label>
-        <label class="row" data-keys="gravity survey footprints"><input type="checkbox" id="gp-gravity" /><span class="swatch" style="background:#f2c14e"></span><span>Gravity</span></label>
-        <label class="row" data-keys="radiometrics radiometric survey footprints"><input type="checkbox" id="gp-radiometric" /><span class="swatch" style="background:#c77dff"></span><span>Radiometrics</span></label>
-        <p class="note">GA GADDS survey footprints (not imagery). MinView WMS drapes are not wired. In-house footprints use /v1/geophysics when the droplet patch is live.</p>
+        <label class="row" data-keys="magnetics tmi rtp vrtp imagery grid"><input type="checkbox" id="gp-img-tmi-rtp" /><span class="swatch" style="background:#5dade2"></span><span>TMI RTP</span></label>
+        <label class="row" data-keys="radiometrics kthu ternary imagery grid"><input type="checkbox" id="gp-img-kthu" /><span class="swatch" style="background:#c77dff"></span><span>KThU</span></label>
+        <details class="gp-more">
+          <summary>More products</summary>
+          <label class="row" data-keys="magnetics tmi imagery"><input type="checkbox" id="gp-img-tmi" /><span class="swatch" style="background:#7ec8c0"></span><span>TMI</span></label>
+          <label class="row" data-keys="magnetics tmi 40m imagery"><input type="checkbox" id="gp-img-tmi-40m" /><span class="swatch" style="background:#4aa3a0"></span><span>TMI 40 m</span></label>
+          <label class="row" data-keys="gravity isostatic residual imagery"><input type="checkbox" id="gp-img-isostatic" /><span class="swatch" style="background:#f2c14e"></span><span>Gravity isostatic</span></label>
+        </details>
+        <details class="gp-more">
+          <summary>Survey outlines</summary>
+          <label class="row" data-keys="magnetics magnetic survey footprints"><input type="checkbox" id="gp-magnetic" /><span class="swatch" style="background:#5dade2"></span><span>Magnetics outlines</span></label>
+          <label class="row" data-keys="gravity survey footprints"><input type="checkbox" id="gp-gravity" /><span class="swatch" style="background:#f2c14e"></span><span>Gravity outlines</span></label>
+          <label class="row" data-keys="radiometrics radiometric survey footprints"><input type="checkbox" id="gp-radiometric" /><span class="swatch" style="background:#c77dff"></span><span>Radiometrics outlines</span></label>
+        </details>
+        <p class="note">Imagery is GA National Geophysical Grids WMS (2019 TMI RTP / Radmap KThU). Outlines are GADDS survey footprints. NSW 1:250k MinView sheet mosaics are not hosted here.</p>
       </section>
       <section class="lg lg-streets" data-keys="streets osm basemap">
         <label class="row" data-keys="streets osm roads basemap"><input type="checkbox" id="osm" /><span class="swatch" style="background:#555"></span><span>Streets</span></label>
@@ -115,7 +128,7 @@
       </div>
       <p class="note">Click the map to identify. Compare holders with vs=BHP,RIO. Open ground is not a grant — apply / lease links go to the state portal for that point. Disclaimer is on the identify card.</p>
       <footer>
-        <p>Official state titles. Land: ABARES / ACLUMP tenure raster and NNTT native title / ILUA (CC BY 4.0). Geology: GA / state surveys. Geophysics footprints: GA GADDS WMS. Occurrences: GSNSW, GSQ, GSV, MRT, NTGS, WA MINEDEX (CC BY-NC). Holes and geochem are density cells; assays only when the live API returns them.</p>
+        <p>Official state titles. Land: ABARES / ACLUMP tenure raster and NNTT native title / ILUA (CC BY 4.0). Geology: GA / state surveys; basement under cover is GA Layered Geology. Geophysics imagery: GA National Geophysical Grids WMS. Occurrences: GSNSW, GSQ, GSV, MRT, NTGS, WA MINEDEX (CC BY-NC). Holes and geochem are density cells; VIC assays from official GSV WFS.</p>
       </footer>
     </details>
 
@@ -162,6 +175,6 @@
   </aside>
   <div id="popup" class="hidden"></div>
   <script src="vendor/maplibre-gl.js"></script>
-  <script src="app.js?v=20260909c"></script>
+  <script src="app.js?v=20261001a"></script>
 </body>
 </html>

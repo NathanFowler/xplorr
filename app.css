@@ -80,6 +80,20 @@ h3 {
 .lg:first-child { border-top: 0; padding-top: 0; }
 .lg-streets { padding-top: 6px; }
 .lg[hidden], .row[hidden] { display: none; }
+.gp-more {
+  margin: 4px 0 2px;
+  border: 0;
+}
+.gp-more summary {
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #888;
+  cursor: pointer;
+  list-style: none;
+}
+.gp-more summary::-webkit-details-marker { display: none; }
+.gp-more[open] summary { color: #bbb; }
 
 .row {
   display: flex;
@@ -357,6 +371,7 @@ footer { margin-top: 12px; font-size: 0.68rem; color: #888; line-height: 1.4; }
 .gaps li { font-size: 0.68rem; color: #aaa; line-height: 1.35; margin: 6px 0; }
 .gaps li strong { display: block; color: #fff; font-weight: 650; }
 .gaps .gap-st { color: #888; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.58rem; }
+.gaps li .gap-st { margin-right: 6px; }
 .gaps a { color: #fff; }
 .file-not-hosted { color: #888; font-size: 0.62rem; }
 

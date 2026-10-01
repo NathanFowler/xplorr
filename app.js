@@ -49,11 +49,52 @@
   const ILUA_WFS = "https://data.gov.au/geoserver/indigenous-land-use-agreements-registered-or-in-notification/wfs";
   const ILUA_LAYER = "ckan_9e837144_8070_4983_8bf0_15e7ceb56ed7";
   const GA_GP_WMS = "https://services.ga.gov.au/gis/geophysical-surveys/wms";
+  const GA_GP_GRIDS_WMS = "https://services.ga.gov.au/gis/geophysical-grids/ows";
+  const GA_BASEMENT_MAP =
+    "https://services.ga.gov.au/gis/rest/services/LayeredGeologyOfAustralia/MapServer";
+  const VIC_GCHEM_WFS = "https://opendata.maps.vic.gov.au/geoserver/ows";
+  const VIC_GCHEM_TYPE = "open-data-platform:geochemistry";
+  const LIVE_TITLES_PREF_KEY = "xplorr-live-titles";
   const GP_LAYERS = [
-    { id: "magnetic", inputId: "gp-magnetic", layer: "gadds:geophysical_datasets_magnetic", label: "Magnetics", color: "#5dade2" },
-    { id: "gravity", inputId: "gp-gravity", layer: "gadds:geophysical_datasets_gravity", label: "Gravity", color: "#f2c14e" },
-    { id: "radiometric", inputId: "gp-radiometric", layer: "gadds:geophysical_datasets_radiometric", label: "Radiometrics", color: "#c77dff" }
+    { id: "magnetic", inputId: "gp-magnetic", layer: "gadds:geophysical_datasets_magnetic", label: "Magnetics outlines", color: "#5dade2" },
+    { id: "gravity", inputId: "gp-gravity", layer: "gadds:geophysical_datasets_gravity", label: "Gravity outlines", color: "#f2c14e" },
+    { id: "radiometric", inputId: "gp-radiometric", layer: "gadds:geophysical_datasets_radiometric", label: "Radiometrics outlines", color: "#c77dff" }
   ];
+  // Official GA National Geophysical Grids WMS — imagery, not survey footprints.
+  const GP_IMAGERY = [
+    { id: "tmi-rtp", inputId: "gp-img-tmi-rtp", layer: "geophys:magmap_v7_2019_RTP", label: "TMI RTP", tokens: "magnetics tmi rtp vrtp imagery grid", color: "#5dade2", primary: true },
+    { id: "kthu", inputId: "gp-img-kthu", layer: "geophys:radmap_v4_2019_filtered_ternary_image", label: "KThU", tokens: "radiometrics kthu ternary potassium thorium uranium imagery grid", color: "#c77dff", primary: true },
+    { id: "tmi", inputId: "gp-img-tmi", layer: "geophys:magmap_v7_2019_TMI", label: "TMI", tokens: "magnetics tmi imagery", color: "#7ec8c0", primary: false },
+    { id: "tmi-40m", inputId: "gp-img-tmi-40m", layer: "geophys:magmap_v7_2019_TMI_40m", label: "TMI 40 m", tokens: "magnetics tmi 40m imagery", color: "#4aa3a0", primary: false },
+    { id: "isostatic", inputId: "gp-img-isostatic", layer: "geophys:2019_A7_DGIR_v2", label: "Gravity isostatic", tokens: "gravity isostatic residual imagery", color: "#f2c14e", primary: false }
+  ];
+  // Official GSV / DataVic assay columns. -999 is the GSV empty sentinel — never treat as a value.
+  const VIC_ASSAY_FIELDS = [
+    { key: "au_ppb", element: "Au", unit: "ppb", method: "au_meth" },
+    { key: "cu_ppm", element: "Cu", unit: "ppm", method: "cu_meth" },
+    { key: "pb_ppm", element: "Pb", unit: "ppm", method: "pb_meth" },
+    { key: "zn_ppm", element: "Zn", unit: "ppm", method: "zn_meth" },
+    { key: "ag_ppm", element: "Ag", unit: "ppm", method: "ag_meth" },
+    { key: "ag_ppb", element: "Ag", unit: "ppb", method: "ag_meth_ppb" },
+    { key: "as_ppm", element: "As", unit: "ppm", method: "as_meth" },
+    { key: "ni_ppm", element: "Ni", unit: "ppm", method: "ni_meth" },
+    { key: "co_ppm", element: "Co", unit: "ppm", method: "co_meth" },
+    { key: "fe_ppm", element: "Fe", unit: "ppm", method: "fe_meth" },
+    { key: "u", element: "U", unit: "ppm", method: "" },
+    { key: "li", element: "Li", unit: "ppm", method: "" },
+    { key: "sn_ppm", element: "Sn", unit: "ppm", method: "sn_meth" },
+    { key: "w_ppm", element: "W", unit: "ppm", method: "w_meth" },
+    { key: "mo_ppm", element: "Mo", unit: "ppm", method: "mo_meth" },
+    { key: "bi_ppm", element: "Bi", unit: "ppm", method: "bi_meth" },
+    { key: "sb_ppm", element: "Sb", unit: "ppm", method: "sb_meth" }
+  ];
+  const KNOWN_ELEMENTS = {
+    au: "Au", gold: "Au", cu: "Cu", copper: "Cu", pb: "Pb", lead: "Pb",
+    zn: "Zn", zinc: "Zn", ag: "Ag", silver: "Ag", fe: "Fe", iron: "Fe",
+    ni: "Ni", nickel: "Ni", co: "Co", cobalt: "Co", u: "U", uranium: "U",
+    li: "Li", lithium: "Li", as: "As", arsenic: "As", sn: "Sn", tin: "Sn",
+    w: "W", tungsten: "W", mo: "Mo", molybdenum: "Mo", bi: "Bi", sb: "Sb"
+  };
   const GCHEM_ELEMENTS = [
     { id: "au", label: "Au", color: "#ffd000", tokens: ["au", "gold"] },
     { id: "cu", label: "Cu", color: "#ff7a1a", tokens: ["cu", "copper"] },
@@ -109,9 +150,9 @@
     { id: "qld-holes", title: "QLD drillholes", status: "gap", detail: "0 harvested collars. Two DEMO hex cells only — not a QLD hole layer." },
     { id: "report-files", title: "Report files", status: "gap", detail: "Catalogue metadata + official portal URLs only. PDFs / ZIP / data files are not hosted here." },
     { id: "sa-reports", title: "SA reports", status: "gap", detail: "SARIG CSW WAF 403 — harvest is empty." },
-    { id: "geochem-points", title: "Geochem point assays", status: "lag", detail: "4.8M harvest samples are hex-aggregated. /v1/geochem is 404 until the droplet patch is deployed." },
+    { id: "geochem-points", title: "Geochem point assays", status: "partial", detail: "VIC click/export now uses official GSV WFS assays (DataVic GEOCHEMISTRY). /v1/geochem still returns sample/type only until the droplet ingest adds assay columns for other states." },
     { id: "qld-wa-geochem", title: "QLD / WA geochem", status: "gap", detail: "No QLD or WA geochem pack in the harvest. NSW, NT, TAS, SA, VIC only." },
-    { id: "gp-imagery", title: "Geophysics imagery", status: "lag", detail: "GA GADDS survey footprints (and /v1/geophysics when mounted). MinView WMS drapes are not wired." },
+    { id: "gp-imagery", title: "Geophysics imagery", status: "match", detail: "GA National Geophysical Grids WMS: TMI RTP + KThU (plus TMI / 40 m / isostatic gravity). Survey footprints remain as outlines. NSW 1:250k MinView sheet mosaics are not hosted here." },
     { id: "sa-occ", title: "SA occurrences", status: "gap", detail: "120 DEMO preview points only — not a live SA harvest." }
   ];
   const PORTAL_HOMES = {
@@ -297,6 +338,7 @@
   const gchemLegend = document.getElementById("gchem-legend");
   const geoCover = document.getElementById("geo-cover");
   const geoBasement = document.getElementById("geo-basement");
+  const geoUnderCover = document.getElementById("geo-under-cover");
   const geoAgeNote = document.querySelector(".geo-age-note");
   const findInput = document.getElementById("find");
   const findResults = document.getElementById("find-results");
@@ -584,8 +626,45 @@
     return null;
   }
 
+  function liveTitlesWanted() {
+    return !!(liveMaster && liveMaster.checked);
+  }
+
+  function persistLiveTitlesPref() {
+    try { localStorage.setItem(LIVE_TITLES_PREF_KEY, liveTitlesWanted() ? "1" : "0"); } catch (err) {}
+  }
+
+  function restoreLiveTitlesPref() {
+    try {
+      const v = localStorage.getItem(LIVE_TITLES_PREF_KEY);
+      if (v === "0" && liveMaster) liveMaster.checked = false;
+      if (v === "1" && liveMaster) liveMaster.checked = true;
+    } catch (err) {}
+  }
+
+  function syncLiveStateCheckboxes(on) {
+    if (!liveBox) return;
+    liveBox.querySelectorAll('input[data-life="live"]').forEach(function (inp) {
+      if (!inp.disabled) inp.checked = !!on;
+    });
+  }
+
+  function hideLiveTitleLayers() {
+    setLayerVisible(LIVE_TITLES_FILL, false);
+    setLayerVisible(LIVE_TITLES_LINE, false);
+    STATES.forEach(function (s) { setVisible(s.id, "live", false); });
+    if (map.getSource(LIVE_TITLES_SRC)) map.getSource(LIVE_TITLES_SRC).setData(emptyFC());
+  }
+
+  function applyLiveTitlesVisibility() {
+    const on = liveTitlesWanted();
+    setLayerVisible(LIVE_TITLES_FILL, on);
+    setLayerVisible(LIVE_TITLES_LINE, on);
+    if (!on) hideLiveTitleLayers();
+  }
+
   function selectedLiveStates() {
-    if (liveMaster && !liveMaster.checked) return [];
+    if (!liveTitlesWanted()) return [];
     const out = [];
     STATES.forEach(function (s) {
       const inp = liveBox ? liveBox.querySelector('input[data-state="' + s.id + '"][data-life="live"]') : null;
@@ -762,10 +841,34 @@
     zoom: 4.1,
     maxZoom: 14,
     fadeDuration: 0,
-    attributionControl: true
+    attributionControl: true,
+    renderWorldCopies: false
   });
   map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), "top-right");
   map.addControl(new maplibregl.ScaleControl({ unit: "metric" }));
+  function launchNumber(sp, key) {
+    const raw = sp.get(key);
+    if (raw == null || String(raw).trim() === "") return null;
+    const n = Number(raw);
+    return isFinite(n) ? n : null;
+  }
+
+  const launch = (function () {
+    const sp = new URL(window.location.href).searchParams;
+    return {
+      lng: launchNumber(sp, "lng"),
+      lat: launchNumber(sp, "lat"),
+      zoom: launchNumber(sp, "zoom"),
+      gchem: sp.get("gchem") === "1",
+      gp: String(sp.get("gp") || ""),
+      basement: sp.get("basement") === "1",
+      live: sp.get("live")
+    };
+  })();
+  if (launch.lng != null && launch.lat != null) {
+    map.setCenter([launch.lng, launch.lat]);
+    if (launch.zoom != null) map.setZoom(launch.zoom);
+  }
 
   let layerBusyGen = 0;
 
@@ -1117,15 +1220,112 @@
     return has ? row : null;
   }
 
+  function knownElementName(raw) {
+    const token = String(raw || "").trim().toLowerCase().replace(/[^a-z]/g, "");
+    return KNOWN_ELEMENTS[token] || "";
+  }
+
+  function isVicGeochemProps(props) {
+    const st = String((props && (props.state || props.jurisdiction)) || "").toLowerCase();
+    return st === "vic" || st === "victoria";
+  }
+
+  function bboxTouchesVic(bbox) {
+    if (!bbox) return false;
+    const p = String(bbox).split(",").map(Number);
+    if (p.length < 4 || p.some(function (n) { return !isFinite(n); })) return false;
+    const west = Math.min(p[0], p[2]);
+    const south = Math.min(p[1], p[3]);
+    const east = Math.max(p[0], p[2]);
+    const north = Math.max(p[1], p[3]);
+    const v = STATE_BBOXES.vic;
+    return !(east < v.west || west > v.east || north < v.south || south > v.north);
+  }
+
+  function vicAssayValue(raw) {
+    if (raw == null || raw === "") return null;
+    const n = Number(raw);
+    if (!isFinite(n) || n === -999 || n === -9999) return null;
+    return n;
+  }
+
+  function rowsFromVicProperties(p, coords) {
+    const rows = [];
+    if (!p) return rows;
+    VIC_ASSAY_FIELDS.forEach(function (spec) {
+      const value = vicAssayValue(p[spec.key]);
+      if (value == null) return;
+      rows.push({
+        sample: p.orig_id || p.siteid || p.sample || "",
+        element: spec.element,
+        value: value,
+        unit: spec.unit,
+        method: String(p[spec.method] || "").trim(),
+        depth: "",
+        type: p.samp_type || p.sample_type || "",
+        state: "vic",
+        source: "GSV GEOCHEMISTRY WFS",
+        prospect: p.prospect || "",
+        company: p.company || "",
+        lng: coords && coords[0],
+        lat: coords && coords[1]
+      });
+    });
+    return rows;
+  }
+
+  function fetchVicGeochemWfs(bbox, extra) {
+    extra = extra || {};
+    if (!bbox && extra.hex) bbox = extra.hex;
+    if (!bbox) return Promise.resolve({ ok: false, rows: [], reason: "no-bbox" });
+    const parts = String(bbox).split(",").map(Number);
+    if (parts.length < 4 || parts.some(function (n) { return !isFinite(n); })) {
+      return Promise.resolve({ ok: false, rows: [], reason: "bad-bbox" });
+    }
+    const west = Math.min(parts[0], parts[2]);
+    const south = Math.min(parts[1], parts[3]);
+    const east = Math.max(parts[0], parts[2]);
+    const north = Math.max(parts[1], parts[3]);
+    const limit = extra.limit || 200;
+    const qs = [
+      "service=WFS",
+      "version=1.1.0",
+      "request=GetFeature",
+      "typeName=" + encodeURIComponent(VIC_GCHEM_TYPE),
+      "outputFormat=" + encodeURIComponent("application/json"),
+      "maxFeatures=" + encodeURIComponent(String(limit)),
+      "srsName=EPSG:4326",
+      "bbox=" + [west, south, east, north, "EPSG:4326"].join(",")
+    ];
+    return fetch(VIC_GCHEM_WFS + "?" + qs.join("&"))
+      .then(function (r) {
+        if (!r.ok) throw new Error("VIC WFS HTTP " + r.status);
+        return r.json();
+      })
+      .then(function (gj) {
+        const rows = [];
+        ((gj && gj.features) || []).forEach(function (f) {
+          const coords = f.geometry && f.geometry.coordinates;
+          rowsFromVicProperties(f.properties || {}, coords).forEach(function (row) { rows.push(row); });
+        });
+        return { ok: true, rows: rows, raw: gj, available: true, source: "vic-wfs" };
+      })
+      .catch(function (err) {
+        return { ok: false, rows: [], reason: String((err && err.message) || err) };
+      });
+  }
+
   function geochemHexRows(props) {
     const types = parseNamedSplit(props.top_types);
-    const elems = parseNamedSplit(props.top_commodities);
+    const rawElems = parseNamedSplit(props.top_commodities);
     const ids = String(props.sample_ids || "").split(/[,;]+/).map(function (x) { return x.trim(); }).filter(Boolean);
     const rows = [];
-    elems.forEach(function (e) {
+    rawElems.forEach(function (e) {
+      const element = knownElementName(e.name);
+      if (!element) return;
       rows.push({
         sample: ids[0] || "",
-        element: e.name,
+        element: element,
         value: "",
         unit: "",
         method: "",
@@ -1186,7 +1386,6 @@
 
   function fetchGeochemApi(bbox, extra) {
     extra = extra || {};
-    if (!apiStatus.live) return Promise.resolve({ ok: false, rows: [], reason: "api-offline" });
     const params = { limit: extra.limit || 200 };
     if (bbox) params.bbox = bbox;
     if (extra.hole_id) params.hole_id = extra.hole_id;
@@ -1195,7 +1394,9 @@
     if (!params.bbox && !params.hole_id && !params.hex) {
       return Promise.resolve({ ok: false, rows: [], reason: "no-query" });
     }
-    return fetchApi("/v1/geochem", params, 15000)
+    const apiJob = !apiStatus.live
+      ? Promise.resolve({ ok: false, rows: [], reason: "api-offline" })
+      : fetchApi("/v1/geochem", params, 15000)
       .then(function (data) {
         const feats = (data && data.features) || data.samples || data.rows || [];
         const rows = feats.map(function (f) { return geochemRowFromApi(f); }).filter(Boolean);
@@ -1206,6 +1407,15 @@
         if (/HTTP 404/.test(msg)) return { ok: false, rows: [], reason: "no-endpoint" };
         return { ok: false, rows: [], reason: msg };
       });
+    return apiJob.then(function (got) {
+      const hasAssays = !!(got.ok && got.rows.some(function (r) { return r.element && r.value !== ""; }));
+      const wantVic = extra.vic || bboxTouchesVic(bbox) || (extra.state && String(extra.state).toLowerCase() === "vic");
+      if (hasAssays || !wantVic) return got;
+      return fetchVicGeochemWfs(bbox, extra).then(function (vic) {
+        if (vic.ok && vic.rows.length) return vic;
+        return got;
+      });
+    });
   }
 
   function bindGeochemCsv(rootId, filename, getRows) {
@@ -2438,6 +2648,10 @@
       });
       map.on("mouseenter", LIVE_TITLES_FILL, function () { map.getCanvas().style.cursor = "pointer"; });
       map.on("mouseleave", LIVE_TITLES_FILL, function () { map.getCanvas().style.cursor = ""; });
+      if (!liveTitlesWanted()) {
+        map.setLayoutProperty(LIVE_TITLES_FILL, "visibility", "none");
+        map.setLayoutProperty(LIVE_TITLES_LINE, "visibility", "none");
+      }
     }
     if (!map.getSource(COMPANY_SRC)) {
       map.addSource(COMPANY_SRC, { type: "geojson", data: emptyFC(), generateId: true });
@@ -2477,30 +2691,26 @@
       if (map.getLayer(COMPANY_FILL)) map.setPaintProperty(COMPANY_FILL, "fill-color", TITLE_LIVE_COLOR);
       if (map.getLayer(COMPANY_LINE)) map.setPaintProperty(COMPANY_LINE, "line-color", TITLE_LIVE_COLOR);
     }
-    const hideLive = !!(features && features.length);
-    const liveOn = !liveMaster || liveMaster.checked;
+    const hideLive = !!(features && features.length) || !liveTitlesWanted();
     if (map.getLayer(LIVE_TITLES_FILL)) {
-      map.setLayoutProperty(LIVE_TITLES_FILL, "visibility", hideLive || !liveOn ? "none" : "visible");
-      map.setLayoutProperty(LIVE_TITLES_LINE, "visibility", hideLive || !liveOn ? "none" : "visible");
+      map.setLayoutProperty(LIVE_TITLES_FILL, "visibility", hideLive ? "none" : "visible");
+      map.setLayoutProperty(LIVE_TITLES_LINE, "visibility", hideLive ? "none" : "visible");
     }
   }
 
   function clearCompanyOverlay() {
     if (map.getSource(COMPANY_SRC)) map.getSource(COMPANY_SRC).setData(emptyFC());
-    const liveOn = !liveMaster || liveMaster.checked;
-    if (map.getLayer(LIVE_TITLES_FILL)) {
-      map.setLayoutProperty(LIVE_TITLES_FILL, "visibility", liveOn ? "visible" : "none");
-      map.setLayoutProperty(LIVE_TITLES_LINE, "visibility", liveOn ? "visible" : "none");
-    }
+    applyLiveTitlesVisibility();
     if (map.getLayer(COMPANY_FILL)) map.setPaintProperty(COMPANY_FILL, "fill-color", TITLE_LIVE_COLOR);
     if (map.getLayer(COMPANY_LINE)) map.setPaintProperty(COMPANY_LINE, "line-color", TITLE_LIVE_COLOR);
   }
 
   function refreshLiveTitles() {
     if (!apiStatus.live || !map.getSource(LIVE_TITLES_SRC)) return Promise.resolve();
-    if (liveMaster && !liveMaster.checked) {
+    if (!liveTitlesWanted()) {
       lastLiveTitlesTruncated = false;
-      map.getSource(LIVE_TITLES_SRC).setData(emptyFC());
+      liveTitlesSeq += 1;
+      hideLiveTitleLayers();
       return Promise.resolve();
     }
     const zoom = map.getZoom();
@@ -2508,6 +2718,7 @@
     if (!limit) {
       lastLiveTitlesTruncated = false;
       map.getSource(LIVE_TITLES_SRC).setData(emptyFC());
+      applyLiveTitlesVisibility();
       return Promise.resolve();
     }
     const seq = ++liveTitlesSeq;
@@ -2516,21 +2727,36 @@
     if (ground && ground.company && !(vsPair && vsPair[0])) params.holder = ground.company;
     if (findQuery && !params.holder) params.q = findQuery;
     return fetchApi("/v1/titles", params, 18000).then(function (gj) {
-      if (seq !== liveTitlesSeq) return;
+      if (seq !== liveTitlesSeq || !liveTitlesWanted()) {
+        if (!liveTitlesWanted()) hideLiveTitleLayers();
+        return;
+      }
       const norm = normalizeTitleCollection(gj);
       lastLiveTitlesTruncated = (norm.features || []).length >= limit;
       map.getSource(LIVE_TITLES_SRC).setData(norm);
       applyLiveApiStateFilter(findQuery);
+      applyLiveTitlesVisibility();
       if (vsPair || (ground && (ground.company || (ground.titles && ground.titles.length)))) {
         applyGroundFilters();
       }
     }).catch(function (err) {
       if (seq !== liveTitlesSeq) return;
+      if (!liveTitlesWanted()) {
+        hideLiveTitleLayers();
+        return;
+      }
       log("Live titles API: " + ((err && err.message) || "failed") + " — keeping last layer.");
+      applyLiveTitlesVisibility();
     });
   }
 
   function scheduleLiveTitles() {
+    if (!liveTitlesWanted()) {
+      if (liveTitlesTimer) clearTimeout(liveTitlesTimer);
+      liveTitlesSeq += 1;
+      hideLiveTitleLayers();
+      return;
+    }
     if (!apiStatus.live) return;
     if (liveTitlesTimer) clearTimeout(liveTitlesTimer);
     liveTitlesTimer = setTimeout(function () { refreshLiveTitles(); }, 350);
@@ -3630,8 +3856,18 @@
   buildLandToggles();
 
   function gpTileUrl(spec) {
+    const host = spec.grids ? GA_GP_GRIDS_WMS : GA_GP_WMS;
     return (
-      GA_GP_WMS +
+      host +
+      "?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&FORMAT=image/png&TRANSPARENT=true" +
+      "&LAYERS=" + encodeURIComponent(spec.layer) +
+      "&CRS=EPSG:3857&STYLES=&WIDTH=256&HEIGHT=256&BBOX={bbox-epsg-3857}"
+    );
+  }
+
+  function gpImageryTileUrl(spec) {
+    return (
+      GA_GP_GRIDS_WMS +
       "?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&FORMAT=image/png&TRANSPARENT=true" +
       "&LAYERS=" + encodeURIComponent(spec.layer) +
       "&CRS=EPSG:3857&STYLES=&WIDTH=256&HEIGHT=256&BBOX={bbox-epsg-3857}"
@@ -3740,6 +3976,149 @@
       void withLayerBusy("Loading " + spec.label + "…", row, function () { return setGpLayerOn(spec, true); });
     });
   });
+
+  function ensureGpImageryLayer(spec) {
+    const lid = "gp-img-" + spec.id;
+    const sid = "src-gp-img-" + spec.id;
+    if (map.getLayer(lid)) {
+      map.setLayoutProperty(lid, "visibility", "visible");
+      return Promise.resolve();
+    }
+    if (!map.getSource(sid)) {
+      map.addSource(sid, {
+        type: "raster",
+        tiles: [gpImageryTileUrl(spec)],
+        tileSize: 256,
+        attribution: "Geophysics imagery: Geoscience Australia National Geophysical Grids 2019 CC BY 4.0"
+      });
+    }
+    map.addLayer(
+      {
+        id: lid,
+        type: "raster",
+        source: sid,
+        paint: { "raster-opacity": 0.82 }
+      },
+      gpBeforeId()
+    );
+    return Promise.resolve();
+  }
+
+  function setGpImageryOn(spec, on) {
+    const lid = "gp-img-" + spec.id;
+    if (!on) {
+      if (map.getLayer(lid)) map.setLayoutProperty(lid, "visibility", "none");
+      return Promise.resolve();
+    }
+    return ensureGpImageryLayer(spec);
+  }
+
+  GP_IMAGERY.forEach(function (spec) {
+    const inp = document.getElementById(spec.inputId);
+    if (!inp) return;
+    inp.addEventListener("change", function (e) {
+      const row = e.target && e.target.closest ? e.target.closest(".row") : null;
+      if (!inp.checked) {
+        setGpImageryOn(spec, false);
+        return;
+      }
+      void withLayerBusy("Loading " + spec.label + " imagery…", row, function () { return setGpImageryOn(spec, true); });
+    });
+  });
+
+  function basementTileUrl() {
+    return (
+      GA_BASEMENT_MAP +
+      "/export?bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&size=256,256" +
+      "&format=png32&transparent=true&f=image&layers=" +
+      encodeURIComponent("show:7,21,12,16")
+    );
+  }
+
+  function ensureBasementUnderCover() {
+    const lid = "geo-under-cover";
+    const sid = "src-geo-under-cover";
+    if (map.getLayer(lid)) {
+      map.setLayoutProperty(lid, "visibility", "visible");
+      return Promise.resolve();
+    }
+    if (!map.getSource(sid)) {
+      map.addSource(sid, {
+        type: "raster",
+        tiles: [basementTileUrl()],
+        tileSize: 256,
+        attribution: "Inferred basement under cover: Geoscience Australia Layered Geology of Australia CC BY 4.0"
+      });
+    }
+    map.addLayer(
+      {
+        id: lid,
+        type: "raster",
+        source: sid,
+        paint: { "raster-opacity": 0.72 }
+      },
+      map.getLayer("geo-fill") ? "geo-fill" : gpBeforeId()
+    );
+    return Promise.resolve();
+  }
+
+  function setBasementUnderCoverOn(on) {
+    const lid = "geo-under-cover";
+    if (!on) {
+      if (map.getLayer(lid)) map.setLayoutProperty(lid, "visibility", "none");
+      return Promise.resolve();
+    }
+    return ensureBasementUnderCover();
+  }
+
+  function identifyBasementUnderCover(lngLat) {
+    if (!geoUnderCover || !geoUnderCover.checked) return Promise.resolve();
+    const geom = JSON.stringify({
+      x: lngLat.lng,
+      y: lngLat.lat,
+      spatialReference: { wkid: 4326 }
+    });
+    const url =
+      GA_BASEMENT_MAP +
+      "/identify?f=json&geometryType=esriGeometryPoint&sr=4326&tolerance=3" +
+      "&returnGeometry=false&layers=" + encodeURIComponent("visible:7,21,12,16") +
+      "&geometry=" + encodeURIComponent(geom);
+    return fetch(url)
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        const hit = ((data && data.results) || [])[0];
+        if (!hit) return;
+        const p = hit.attributes || {};
+        const rows = [
+          ["Unit", fillField(p.NAME || p.STRATNAME || p.name || hit.layerName, DEMO_NA)],
+          ["Layer", fillField(hit.layerName, DEMO_NA)],
+          ["Age", fillField(p.AGE || p.MAXAGE || p.ERA, DEMO_NA)],
+          ["Lithology", fillField(p.LITHNAME || p.LITHOLOGY || p.LITHDESC, DEMO_NA)]
+        ];
+        const extra = document.createElement("div");
+        extra.className = "popup-links";
+        extra.innerHTML = popupWrap("Basement under cover", "GA layered geology", rows);
+        const root = popup.getElement();
+        const content = root && root.querySelector(".maplibregl-popup-content");
+        if (content) content.appendChild(extra);
+      })
+      .catch(function (err) {
+        log("Basement identify: " + ((err && err.message) || "failed"));
+      });
+  }
+
+  if (geoUnderCover) {
+    geoUnderCover.addEventListener("change", function (e) {
+      const row = e.target && e.target.closest ? e.target.closest(".row") : null;
+      if (!geoUnderCover.checked) {
+        setBasementUnderCoverOn(false);
+        return;
+      }
+      void withLayerBusy("Loading inferred basement under cover…", row, function () {
+        return setBasementUnderCoverOn(true);
+      });
+    });
+  }
 
   function identifyAbares(lngLat) {
     const wanted = {};
@@ -3947,24 +4326,30 @@
     });
   }
   if (liveMaster) {
+    restoreLiveTitlesPref();
+    if (launch.live === "0") liveMaster.checked = false;
+    if (launch.live === "1") liveMaster.checked = true;
+    persistLiveTitlesPref();
     liveMaster.addEventListener("change", function () {
-      const on = liveMaster.checked;
-      if (liveBox) {
-        liveBox.querySelectorAll('input[data-life="live"]').forEach(function (inp) {
-          if (!inp.disabled) inp.checked = on;
-        });
-      }
+      const on = liveTitlesWanted();
+      persistLiveTitlesPref();
+      syncLiveStateCheckboxes(on);
+      liveTitlesSeq += 1;
+      if (liveTitlesTimer) clearTimeout(liveTitlesTimer);
       if (liveTitlesUsingApi) {
-        setLayerVisible(LIVE_TITLES_FILL, on);
-        setLayerVisible(LIVE_TITLES_LINE, on);
-        applyLiveApiStateFilter(findQuery);
-        if (on) scheduleLiveTitles();
+        if (!on) {
+          hideLiveTitleLayers();
+        } else {
+          applyLiveTitlesVisibility();
+          applyLiveApiStateFilter(findQuery);
+          scheduleLiveTitles();
+        }
       } else if (on) {
         STATES.forEach(function (s) {
           const inp = liveBox && liveBox.querySelector('input[data-state="' + s.id + '"][data-life="live"]');
           if (!inp || inp.disabled) return;
           addStateLayers(s.id, "live", TITLE_LIVE_COLOR).then(function (ok) {
-            if (ok) setVisible(s.id, "live", true);
+            if (ok && liveTitlesWanted()) setVisible(s.id, "live", true);
           });
         });
       } else {
@@ -4714,23 +5099,39 @@
     popup.setLngLat(lngLat).setHTML(rows + extra).addTo(map);
     attachLandIdentify(lngLat);
     identifyGp(lngLat);
+    identifyBasementUnderCover(lngLat);
     let gchemRows = isGchem ? geochemHexRows(props) : [];
     if (isGchem && !isDemoFlag(props.demo)) {
       try {
-        fillGeochemTable("popup-gchem", gchemRows, "Hex-level harvest fields only — waiting on /v1/geochem for point assays.");
+        fillGeochemTable(
+          "popup-gchem",
+          gchemRows,
+          isVicGeochemProps(props)
+            ? "Loading official GSV assays for this Victoria cell…"
+            : "Hex-level harvest fields only — waiting on point assays."
+        );
         bindGeochemCsv("popup-gchem", "xplorr-geochem-hex.csv", function () { return gchemRows; });
       } catch (err) {
         log("Geochem table: " + ((err && err.message) || err));
       }
-      fetchGeochemApi(hexBboxParam(props)).then(function (got) {
-        if (got.ok && got.rows.length) {
-          gchemRows = got.rows.map(function (r) { r.source = "api"; return r; });
-          fillGeochemTable("popup-gchem", gchemRows, "Point assays from /v1/geochem. Empty cells were not filled in.");
+      fetchGeochemApi(hexBboxParam(props), { state: props.state, vic: isVicGeochemProps(props) }).then(function (got) {
+        if (got.ok && got.rows.length && got.rows.some(function (r) { return r.element && r.value !== ""; })) {
+          gchemRows = got.rows.map(function (r) {
+            if (!r.source) r.source = got.source === "vic-wfs" ? "GSV GEOCHEMISTRY WFS" : "api";
+            return r;
+          });
+          fillGeochemTable(
+            "popup-gchem",
+            gchemRows,
+            got.source === "vic-wfs"
+              ? "Official GSV / DataVic GEOCHEMISTRY assays (empty / -999 not filled in)."
+              : "Point assays from /v1/geochem. Empty cells were not filled in."
+          );
         } else if (got.reason === "no-endpoint") {
           fillGeochemTable(
             "popup-gchem",
             gchemRows,
-            "Live API has no /v1/geochem yet (4.8M harvest samples are hex-aggregated). Type % and example IDs are real; assay values were not invented."
+            "Live API has no /v1/geochem yet. Type % and example IDs are real; assay values were not invented."
           );
         } else if (!got.ok) {
           fillGeochemTable("popup-gchem", gchemRows, "Geochem API unavailable. Showing hex summary only.");
@@ -5310,6 +5711,10 @@
   }
 
   function ensureLiveStates(stateIds, forceStatic) {
+    if (!liveTitlesWanted()) {
+      hideLiveTitleLayers();
+      return Promise.resolve((stateIds || []).map(function () { return false; }));
+    }
     if (apiStatus.live && !forceStatic) {
       ensureApiTitleLayers();
       scheduleLiveTitles();
@@ -5885,21 +6290,30 @@
       gchemExport.appendChild(gchemBtn);
       const gchemNote = document.createElement("p");
       gchemNote.className = "note";
-      gchemNote.textContent = "AOI pack v2: hex type % / element names / example IDs, plus point assays if /v1/geochem answers. Empty assay cells were not filled in.";
+      gchemNote.textContent = "AOI pack: hex type % / element names / example IDs, plus point assays from /v1/geochem or official GSV WFS in Victoria. Empty / -999 assay cells were not filled in.";
       gchemExport.appendChild(gchemNote);
       gchemBtn.addEventListener("click", function () {
         const bbox = bboxParam(bounds);
         const hexRows = [];
+        let vicHex = false;
         gchems.forEach(function (it) {
+          if (isVicGeochemProps(it.props || {})) vicHex = true;
           geochemHexRows(it.props || {}).forEach(function (row) { hexRows.push(row); });
         });
-        fetchGeochemApi(bbox).then(function (got) {
-          const rows = (got.ok && got.rows.length) ? got.rows : hexRows;
+        fetchGeochemApi(bbox, { vic: vicHex || bboxTouchesVic(bbox) }).then(function (got) {
+          const apiRows = (got.ok && got.rows) || [];
+          const hasAssays = apiRows.some(function (r) { return r.element && r.value !== ""; });
+          const rows = hasAssays ? apiRows : hexRows;
           if (!rows.length) {
             gchemNote.textContent = "No geochem rows in this box.";
             return;
           }
           downloadCsv("xplorr-geochem-aoi.csv", ["sample", "element", "value", "unit", "method", "depth", "type", "state", "source"], rows);
+          gchemNote.textContent = hasAssays
+            ? (got.source === "vic-wfs"
+              ? rows.length.toLocaleString() + " official GSV assay rows (DataVic GEOCHEMISTRY)."
+              : rows.length.toLocaleString() + " assay rows from /v1/geochem.")
+            : "Hex summaries only — no assay values in this box.";
         });
       });
       packBody.appendChild(gchemExport);
@@ -6221,6 +6635,7 @@
       const content = root.querySelector(".maplibregl-popup-content");
       if (content) content.appendChild(extra);
       identifyGp(lngLat);
+      identifyBasementUnderCover(lngLat);
       extra.querySelectorAll(".ident-hit").forEach(function (btn) {
         btn.addEventListener("click", function () {
           const kind = btn.getAttribute("data-kind");
@@ -6310,12 +6725,14 @@
         popup.setLngLat(e.lngLat).setHTML(geoPopupHtml(geos[0].properties || {})).addTo(map);
         attachLandIdentify(e.lngLat);
         identifyGp(e.lngLat);
+        identifyBasementUnderCover(e.lngLat);
         return;
       }
     }
     if (selectedGpSpecs().length) {
       identifyGp(e.lngLat);
     }
+    identifyBasementUnderCover(e.lngLat);
     if (gaToggle.checked) {
       identifyGa(e.lngLat);
       return;
@@ -6383,12 +6800,34 @@
             });
           }
           buildToggles();
+          function applyLaunchLayers() {
+            if (launch.gchem && gchemMaster && !gchemMaster.checked) {
+              gchemMaster.checked = true;
+              gchemMaster.dispatchEvent(new Event("change"));
+            }
+            if (launch.basement && geoUnderCover && !geoUnderCover.checked) {
+              geoUnderCover.checked = true;
+              geoUnderCover.dispatchEvent(new Event("change"));
+            }
+            if (launch.gp) {
+              const wanted = launch.gp.split(",").map(function (s) { return s.trim(); }).filter(Boolean);
+              GP_IMAGERY.forEach(function (spec) {
+                if (wanted.indexOf(spec.id) < 0) return;
+                const inp = document.getElementById(spec.inputId);
+                if (inp && !inp.checked) {
+                  inp.checked = true;
+                  inp.dispatchEvent(new Event("change"));
+                }
+              });
+            }
+          }
           function finishReady(msg) {
             log(msg);
             initGroundUi();
             initBoxTool();
             initOpenGround();
             buildGchemHeatToggles();
+            applyLaunchLayers();
             initReportSearch();
             renderGapsPanel();
             applyGroundFromForm(false);
